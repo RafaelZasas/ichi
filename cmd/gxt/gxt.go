@@ -15,25 +15,24 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/atterpac/jig/theme/themes"
 
-	"github.com/atterpac/etch/internal/app"
-	"github.com/atterpac/etch/internal/commands"
-	"github.com/atterpac/etch/internal/git"
-	"github.com/atterpac/etch/internal/views"
+	"github.com/atterpac/gxt/internal/app"
+	"github.com/atterpac/gxt/internal/commands"
+	"github.com/atterpac/gxt/internal/config"
+	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/views"
 )
 
-const sponsorURL = "github.com/sponsors/atterpac"
+const footerURL = "getgalaxy.io"
 
-// ASCII art logo for etch
-const etchLogo = `
-__/\\\\\\\\\\\\\\\______________________________/\\\_________        
- _\/\\\///////////______________________________\/\\\_________       
-  _\/\\\_________________/\\\____________________\/\\\_________      
-   _\/\\\\\\\\\\\______/\\\\\\\\\\\_____/\\\\\\\\_\/\\\_________     
-    _\/\\\///////______\////\\\////____/\\\//////__\/\\\\\\\\\\__    
-     _\/\\\________________\/\\\_______/\\\_________\/\\\/////\\\_   
-      _\/\\\________________\/\\\_/\\__\//\\\________\/\\\___\/\\\_  
-       _\/\\\\\\\\\\\\\\\____\//\\\\\____\///\\\\\\\\_\/\\\___\/\\\_ 
-        _\///////////////______\/////_______\////////__\///____\///__
+// ASCII art logo for gxt
+const gxtLogo = `
+ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
+░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
+░▒▓█▓▒▒▓███▓▒░░▒▓██████▓▒░   ░▒▓█▓▒░
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
+ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
 `
 
 var (
@@ -45,7 +44,13 @@ func main() {
 	flag.Parse()
 
 	// 1. Initialize theme FIRST (Required by jig)
-	theme.SetProvider(themes.TokyoNightNight)
+	// Load saved theme from config, fallback to TokyoNightNight
+	savedTheme := config.GetTheme()
+	if t := themes.Get(savedTheme); t != nil {
+		theme.SetProvider(t)
+	} else {
+		theme.SetProvider(themes.TokyoNightNight)
+	}
 
 	// 2. Initialize git repository
 	repo, err := git.OpenRepository(*repoPath)
@@ -68,7 +73,7 @@ func main() {
 	app.UpdateStatusBar(statusBar, repo)
 
 	menu := layout.NewMenu().
-		SetRightText("[" + theme.TagFgDim() + "]♥ " + sponsorURL + "[-]")
+		SetRightText("[" + theme.TagFgDim() + "]♥ " + footerURL + "[-]")
 
 	// Track focused primitive before entering command mode
 	var previousFocus tview.Primitive
@@ -84,6 +89,9 @@ func main() {
 			}
 		},
 	})
+
+	// Initialize toast notifications
+	app.InitToasts(application.GetApplication())
 
 	// 6. Set up command mode callbacks
 	cmdCtx := &commands.Context{
@@ -142,8 +150,11 @@ func main() {
 
 func showSplash() error {
 	splash := components.NewSplash().
-		SetLogo(etchLogo).
-		SetStatus("Press any key to continue\n\n[" + theme.TagFgDim() + "]♥ " + sponsorURL + "[-]").
+		SetLogo(gxtLogo).
+		SetLogoWidth(40).
+		SetLogoHeight(9).
+		SetStatusHeight(1).
+		SetStatus("[" + theme.TagFgDim() + "]Made with ♥ by " + footerURL + "[-]").
 		SetGradient(theme.GradientDiagonal).
 		SetAutoDismiss(3 * time.Second).
 		SetDismissKeys([]components.DismissKey{components.DismissAnyKey})
@@ -165,6 +176,12 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		// Don't handle keys when in command mode
 		if statusBar.IsCommandMode() {
+			return event
+		}
+
+		// Don't handle most keys when a modal is active (let modal handle input)
+		// Exception: Escape key should still work to dismiss modals
+		if app.Pages().CurrentIsModal() && event.Key() != tcell.KeyEscape {
 			return event
 		}
 
@@ -199,23 +216,34 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 			showThemeSelector(app)
 			return nil
 
-		// Git-specific global keys
-		case event.Rune() == 'b':
+		// Command palette (Ctrl+P or Ctrl+K)
+		case event.Key() == tcell.KeyCtrlP || event.Key() == tcell.KeyCtrlK:
+			views.ShowFinder(app, repo, statusBar)
+			return nil
+
+		// Git-specific global keys (only from root/graph view to avoid conflicts)
+		case event.Rune() == 'b' && app.Pages().StackDepth() <= 1:
 			branchView := views.NewBranchesView(app, repo)
 			app.Pages().Push(branchView)
 			app.Crumbs().SetPath([]string{"Branches"})
 			return nil
 
-		case event.Rune() == 's':
+		case event.Rune() == 's' && app.Pages().StackDepth() <= 1:
 			statusView := views.NewStatusView(app, repo)
 			app.Pages().Push(statusView)
 			app.Crumbs().SetPath([]string{"Status"})
 			return nil
 
-		case event.Rune() == 'S':
+		case event.Rune() == 'S' && app.Pages().StackDepth() <= 1:
 			stashView := views.NewStashView(app, repo)
 			app.Pages().Push(stashView)
 			app.Crumbs().SetPath([]string{"Stash"})
+			return nil
+
+		case event.Rune() == 'p' && app.Pages().StackDepth() <= 1:
+			prView := views.NewPRListView(app, repo)
+			app.Pages().Push(prView)
+			app.Crumbs().SetPath([]string{"PRs"})
 			return nil
 
 		case event.Rune() == 'g':
@@ -239,6 +267,5 @@ func showHelp(app *layout.App) {
 }
 
 func showThemeSelector(app *layout.App) {
-	selectorView := views.NewThemeSelectorView(app)
-	app.Pages().Push(selectorView)
+	views.ShowThemeSelector(app)
 }

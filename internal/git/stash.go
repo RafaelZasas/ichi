@@ -83,6 +83,16 @@ func (r *Repository) StashPush(message string, includeUntracked bool) error {
 	return err
 }
 
+// StashStaged creates a new stash with only the staged changes.
+func (r *Repository) StashStaged(message string) error {
+	args := []string{"stash", "push", "--staged"}
+	if message != "" {
+		args = append(args, "-m", message)
+	}
+	_, err := r.run(args...)
+	return err
+}
+
 // StashPop pops the top stash.
 func (r *Repository) StashPop() error {
 	_, err := r.run("stash", "pop")

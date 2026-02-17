@@ -14,6 +14,7 @@ import (
 	"github.com/atterpac/jig/layout"
 	"github.com/atterpac/jig/theme"
 
+	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
 )
 
@@ -136,7 +137,7 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 		}
 	}
 	// Tree panel hints
-	return []components.KeyHint{
+	hints := []components.KeyHint{
 		{Key: "j/k", Description: "Navigate"},
 		{Key: "Tab", Description: "Switch tree"},
 		{Key: "l", Description: "View diff"},
@@ -144,6 +145,12 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 		{Key: "d", Description: "Discard"},
 		{Key: "e", Description: "Edit"},
 	}
+	// Show commit/stash only if there are staged files
+	if len(v.stagedFiles) > 0 {
+		hints = append(hints, components.KeyHint{Key: "c", Description: "Commit"})
+		hints = append(hints, components.KeyHint{Key: "s", Description: "Stash"})
+	}
+	return hints
 }
 
 func (v *StagingWorkflowView) loadFiles() {
@@ -760,6 +767,55 @@ func isBinaryContent(content []byte) bool {
 	return false
 }
 
+func (v *StagingWorkflowView) commit() {
+	if len(v.stagedFiles) == 0 {
+		ShowErrorModal(v.app, "No Staged Changes", "Stage some changes before committing")
+		return
+	}
+
+	ShowTextAreaModal(v.app, "Commit", "Commit message:", "", func(message string) {
+		if message == "" {
+			ShowErrorModal(v.app, "Invalid Message", "Commit message cannot be empty")
+			return
+		}
+
+		if err := v.repo.Commit(message); err != nil {
+			ShowErrorModal(v.app, "Commit Failed", err.Error())
+			return
+		}
+
+		app.ToastSuccess("Changes committed successfully")
+		v.loadFiles()
+
+		// If no more changes, pop back to previous view
+		if len(v.unstagedFiles) == 0 && len(v.stagedFiles) == 0 {
+			v.app.Pages().Pop()
+		}
+	})
+}
+
+func (v *StagingWorkflowView) stash() {
+	if len(v.stagedFiles) == 0 {
+		ShowErrorModal(v.app, "No Staged Changes", "Stage some changes before stashing")
+		return
+	}
+
+	ShowInputModal(v.app, "Stash Staged Changes", "Stash message (optional):", func(message string) {
+		if err := v.repo.StashStaged(message); err != nil {
+			ShowErrorModal(v.app, "Stash Failed", err.Error())
+			return
+		}
+
+		app.ToastSuccess("Staged changes stashed successfully")
+		v.loadFiles()
+
+		// If no more changes, pop back to previous view
+		if len(v.unstagedFiles) == 0 && len(v.stagedFiles) == 0 {
+			v.app.Pages().Pop()
+		}
+	})
+}
+
 // Draw renders the staging workflow view.
 func (v *StagingWorkflowView) Draw(screen tcell.Screen) {
 	v.Box.DrawForSubclass(screen, v)
@@ -845,6 +901,12 @@ func (v *StagingWorkflowView) InputHandler() func(*tcell.EventKey, func(tview.Pr
 					return
 				case 'e', 'E':
 					v.editSelected()
+					return
+				case 'c', 'C':
+					v.commit()
+					return
+				case 's', 'S':
+					v.stash()
 					return
 				case 'q':
 					v.app.Pages().Pop()

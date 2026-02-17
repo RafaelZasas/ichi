@@ -1,0 +1,18 @@
+# Conflict Test File
+# This file will be used to create a merge conflict
+
+## Section 1: Introduction
+This is the original content that exists in both branches.
+It should not cause any conflicts.
+
+## Section 2: Features
+- Feature A: Basic functionality
+- Feature B: Advanced options
+- Feature C: Integration support
+
+## Section 3: Configuration
+The configuration will be modified in both branches.
+This will create a conflict.
+
+## Section 4: Footer
+End of file.

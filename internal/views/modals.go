@@ -1,6 +1,9 @@
 package views
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/rivo/tview"
 
 	"github.com/atterpac/jig/components"

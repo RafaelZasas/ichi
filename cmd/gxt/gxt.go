@@ -121,13 +121,18 @@ func main() {
 		}
 		app.UpdateStatusBar(statusBar, repo)
 		// If a new view was pushed, focus it directly
-		// Otherwise restore previous focus for commands that don't push views
+		// Otherwise restore previous focus and refresh the current view
 		if application.Pages().StackDepth() > depthBefore {
 			if current := application.Pages().Current(); current != nil {
 				application.SetFocus(current)
 			}
-		} else if previousFocus != nil {
-			application.SetFocus(previousFocus)
+		} else {
+			if current := application.Pages().Current(); current != nil {
+				current.Start()
+			}
+			if previousFocus != nil {
+				application.SetFocus(previousFocus)
+			}
 		}
 	})
 
@@ -174,7 +179,7 @@ func showSplash(ready <-chan struct{}) error {
 		SetStatusHeight(1).
 		SetStatus("[" + theme.TagFgDim() + "]Made with ♥ by " + footerURL + "[-]").
 		SetGradient(theme.GradientDiagonal).
-		SetAutoDismiss(5 * time.Second). // Fallback max; normally dismissed earlier
+		SetAutoDismiss(10 * time.Second). // Fallback max; normally dismissed earlier
 		SetDismissKeys([]components.DismissKey{components.DismissAnyKey})
 
 	splash.Build()

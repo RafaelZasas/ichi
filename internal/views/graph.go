@@ -127,7 +127,9 @@ func (v *GraphView) setup() {
 		AddSimple("copy_hash", 'y', "Copy hash", v.copyHash).
 		AddSimple("toggle_stashes", 'z', "Toggle stashes", v.toggleStashes).
 		AddSimple("next_match", 'n', "Next match", v.nextMatch).
-		AddSimple("prev_match", 'N', "Prev match", v.prevMatch)
+		AddSimple("prev_match", 'N', "Prev match", v.prevMatch).
+		AddSimple("new_branch", 'b', "New branch", v.newBranch).
+		AddSimple("drop", 'D', "Drop commit", v.dropCommit)
 }
 
 // nav.Component interface implementation
@@ -194,10 +196,11 @@ func (v *GraphView) Hints() []components.KeyHint {
 		{Key: "j/k", Description: "Navigate"},
 		{Key: "g/G", Description: "Top/Bottom"},
 		{Key: "/", Description: "Search"},
-		{Key: "n/N", Description: "Next/Prev"},
 		{Key: "Enter", Description: "Details"},
 		{Key: "d", Description: "Diff"},
 		{Key: "c", Description: "Checkout"},
+		{Key: ":P/:p/:f", Description: "Push/Pull/Fetch"},
+		{Key: "b", Description: "New branch"},
 	}
 }
 
@@ -480,7 +483,7 @@ func (v *GraphView) updateDetail(commit *components.GitCommit) {
 func (v *GraphView) updateDetailUnstaged() {
 	var text strings.Builder
 
-	text.WriteString(fmt.Sprintf("[%s::b]○ Unstaged Changes[-:-:-]\n", theme.TagAccent()))
+	text.WriteString(fmt.Sprintf("[%s::b]○ Working Changes[-:-:-]\n", theme.TagAccent()))
 	text.WriteString(fmt.Sprintf("\n[%s]Press Enter to open the staging workflow[-]\n", theme.TagFgDim()))
 
 	// Get status

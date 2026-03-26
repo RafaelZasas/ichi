@@ -171,10 +171,7 @@ func (m *FinderModal) loadItems() {
 		action          func()
 	}{
 		{"cmd:commit", "Commit", "Commit staged changes", func() {
-			ShowTextAreaModal(m.app, "Commit", "Commit message:", "", func(message string) {
-				if message == "" {
-					return
-				}
+			ShowCommitModal(m.app, "Commit", "", func(message string) {
 				if err := m.repo.Commit(message); err != nil {
 					ShowErrorModal(m.app, "Commit Failed", err.Error())
 				} else {

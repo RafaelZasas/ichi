@@ -742,16 +742,10 @@ func (v *GraphView) editCommitMessage() {
 		return
 	}
 
-	// Show text area modal with current message pre-filled
-	ShowTextAreaModal(v.app, "Edit Commit Message",
-		fmt.Sprintf("Commit: %s", commit.ShortHash),
+	// Show commit modal with current message pre-filled
+	ShowCommitModal(v.app, fmt.Sprintf("Edit Commit Message (%s)", commit.ShortHash),
 		currentMsg,
 		func(newMessage string) {
-			newMessage = strings.TrimSpace(newMessage)
-			if newMessage == "" {
-				ShowErrorModal(v.app, "Error", "Commit message cannot be empty.")
-				return
-			}
 			if newMessage == currentMsg {
 				return // No change
 			}

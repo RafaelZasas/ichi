@@ -722,6 +722,57 @@ func (v *GraphView) editCommitMessage() {
 		})
 }
 
+func (v *GraphView) dropCommit() {
+	commit := v.gitGraph.GetSelected()
+	if commit == nil {
+		return
+	}
+
+	if commit.IsStash {
+		ShowErrorModal(v.app, "Cannot Drop", "Use the stash view to drop stash entries.")
+		return
+	}
+
+	if commit.IsPseudoNode {
+		return
+	}
+
+	if v.repo.IsCommitPushed(commit.Hash) {
+		ShowErrorModal(v.app, "Cannot Drop",
+			"This commit has been pushed to a remote.\n\n"+
+				"Dropping it would require a force push,\n"+
+				"which could disrupt other collaborators.")
+		return
+	}
+
+	ShowConfirmModal(v.app, "Drop Commit",
+		fmt.Sprintf("Drop commit %s?\n\n%s\n\nThis will remove the commit from history.", commit.ShortHash, commit.Message),
+		func() {
+			if err := v.repo.DropCommit(commit.Hash); err != nil {
+				ShowErrorModal(v.app, "Drop Failed", err.Error())
+				return
+			}
+			app.ToastSuccess(fmt.Sprintf("Dropped %s", commit.ShortHash))
+			v.refresh()
+		})
+}
+
+func (v *GraphView) newBranch() {
+	ShowInputModalWithValidator(v.app, "New Branch", "Branch name:",
+		app.BranchNameValidator(),
+		func(name string) {
+			if name == "" {
+				return
+			}
+			if err := v.repo.CreateBranch(name); err != nil {
+				ShowErrorModal(v.app, "Create Failed", err.Error())
+				return
+			}
+			app.ToastSuccess("Branch '" + name + "' created")
+			v.refresh()
+		})
+}
+
 func (v *GraphView) showError(err error) {
 	v.detailView.SetText(fmt.Sprintf("[%s]Error:[-] %v", theme.TagError(), err))
 }

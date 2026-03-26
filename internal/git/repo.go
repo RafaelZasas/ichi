@@ -553,6 +553,46 @@ func (r *Repository) rebaseReword(hash, newMessage string) error {
 	return nil
 }
 
+// DropCommit removes a commit from history.
+// For HEAD, uses soft reset. For older commits, uses interactive rebase.
+func (r *Repository) DropCommit(hash string) error {
+	if r.IsHeadCommit(hash) {
+		return r.ResetSoft("HEAD~1")
+	}
+	return r.rebaseDrop(hash)
+}
+
+// rebaseDrop uses non-interactive rebase to drop a non-HEAD commit.
+func (r *Repository) rebaseDrop(hash string) error {
+	// Find parent of target commit for rebase base
+	parentOut, err := r.run("rev-parse", hash+"^")
+	if err != nil {
+		return fmt.Errorf("cannot find parent commit: %w", err)
+	}
+	parent := strings.TrimSpace(parentOut)
+
+	// Get short hash for matching in todo list
+	shortHashOut, err := r.run("rev-parse", "--short", hash)
+	if err != nil {
+		return fmt.Errorf("cannot get short hash: %w", err)
+	}
+	shortHash := strings.TrimSpace(shortHashOut)
+
+	// Create sequence editor script to change 'pick' to 'drop'
+	seqEditor := fmt.Sprintf(`sed -i.bak 's/^pick %s/drop %s/' "$1" && rm -f "$1.bak"`, shortHash, shortHash)
+
+	cmd := exec.Command("git", "-C", r.path, "rebase", "-i", parent)
+	cmd.Env = append(os.Environ(),
+		"GIT_SEQUENCE_EDITOR="+seqEditor,
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rebase failed: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // FileLogEntry represents a commit that affected a file.
 type FileLogEntry struct {
 	Hash       string

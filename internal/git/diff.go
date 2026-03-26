@@ -7,7 +7,8 @@ import (
 
 // GetCommitDiff returns the diff for a specific commit.
 func (r *Repository) GetCommitDiff(hash string) (string, error) {
-	out, err := r.run("show", "--format=", "--patch", hash)
+	// Use -m --first-parent for merge commits (like stashes)
+	out, err := r.run("show", "-m", "--first-parent", "--format=", "--patch", hash)
 	if err != nil {
 		return "", err
 	}
@@ -16,7 +17,8 @@ func (r *Repository) GetCommitDiff(hash string) (string, error) {
 
 // GetFileDiff returns the diff for a specific file in a commit.
 func (r *Repository) GetFileDiff(hash, file string) (string, error) {
-	out, err := r.run("show", "--format=", "--patch", hash, "--", file)
+	// Use -m --first-parent for merge commits (like stashes)
+	out, err := r.run("show", "-m", "--first-parent", "--format=", "--patch", hash, "--", file)
 	if err != nil {
 		return "", err
 	}

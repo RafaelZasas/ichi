@@ -203,15 +203,17 @@ func (r *Repository) LoadCommit(hash string) (*CommitDetail, error) {
 	}
 
 	// Get stats
-	statsOut, _ := r.run("show", "--stat", "--format=", hash)
+	// For merge commits, use -m --first-parent to show stats against first parent
+	statsOut, _ := r.run("show", "-m", "--first-parent", "--stat", "--format=", hash)
 	stats := parseStats(statsOut)
 
 	// Get changed files with numstat for per-file stats
-	filesOut, _ := r.run("show", "--name-status", "--format=", hash)
+	// For merge commits (like stashes), we need to use -m to show diffs against parents
+	filesOut, _ := r.run("show", "-m", "--first-parent", "--name-status", "--format=", hash)
 	files := parseChangedFiles(filesOut)
 
 	// Get per-file stats
-	numstatOut, _ := r.run("show", "--numstat", "--format=", hash)
+	numstatOut, _ := r.run("show", "-m", "--first-parent", "--numstat", "--format=", hash)
 	parseFileNumstat(numstatOut, files)
 
 	// Get parent subjects

@@ -98,7 +98,7 @@ func (v *DiffView) showError(err error) {
 func (v *DiffView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
 func (v *DiffView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
 func (v *DiffView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *DiffView) Focus(d func(tview.Primitive)) { v.diffViewer.Focus(d) }
+func (v *DiffView) Focus(d func(tview.Primitive)) { d(v.diffViewer) }
 func (v *DiffView) Blur()                          { v.diffViewer.Blur() }
 func (v *DiffView) HasFocus() bool                 { return v.diffViewer.HasFocus() }
 
@@ -109,7 +109,12 @@ func (v *DiffView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, fun
 func (v *DiffView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
 
 func (v *DiffView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.diffViewer.InputHandler()
+	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
+		// Delegate to diffViewer's input handler
+		if handler := v.diffViewer.InputHandler(); handler != nil {
+			handler(event, setFocus)
+		}
+	})
 }
 
 // FileDiffView displays a diff for a single file.

@@ -65,6 +65,10 @@ func (v *StashView) setup() {
 			return fmt.Sprintf("%d", s.Index)
 		}).
 		SetFetcher(v.repo.ListStashes).
+		SetOnSelect(func(s git.Stash) {
+			// When Enter is pressed, view the diff
+			v.viewDiff()
+		}).
 		SetOnRefresh(func(_ []git.Stash, err error) {
 			if err != nil {
 				ShowErrorModal(v.app, "Error", err.Error())
@@ -98,11 +102,11 @@ func (v *StashView) Stop() {
 func (v *StashView) Hints() []components.KeyHint {
 	return []components.KeyHint{
 		{Key: "j/k", Description: "Navigate"},
+		{Key: "Enter", Description: "View diff"},
 		{Key: "a", Description: "Apply"},
 		{Key: "p", Description: "Pop"},
 		{Key: "d", Description: "Drop"},
 		{Key: "n", Description: "New"},
-		{Key: "D", Description: "Diff"},
 	}
 }
 

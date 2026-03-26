@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -148,5 +149,5 @@ func (r *Repository) StashBranch(branchName string, index int) error {
 
 // stashRef converts an index to a stash reference.
 func stashRef(index int) string {
-	return "stash@{" + string(rune('0'+index)) + "}"
+	return fmt.Sprintf("stash@{%d}", index)
 }

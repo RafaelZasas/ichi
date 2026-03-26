@@ -4,6 +4,7 @@ import (
 	"github.com/atterpac/jig/layout"
 
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // ArgType represents the type of command argument for completion.
@@ -32,6 +33,16 @@ type Context struct {
 	App       *layout.App
 	Repo      *git.Repository
 	StatusBar *layout.StatusBar
+}
+
+// Selection returns the current view's selection context.
+// Returns nil if the current view doesn't implement selection.Provider.
+func (c *Context) Selection() *selection.Context {
+	current := c.App.Pages().Current()
+	if provider, ok := current.(selection.Provider); ok {
+		return provider.Selection()
+	}
+	return nil
 }
 
 // Handler is the function signature for command handlers.

@@ -405,29 +405,21 @@ func (r *Repository) LoadStashes() ([]*components.GitCommit, error) {
 			continue
 		}
 
-		parts := strings.SplitN(line, "|", 3)
-		if len(parts) < 3 {
+		parts := strings.SplitN(line, "|", 5)
+		if len(parts) < 5 {
 			continue
 		}
 
-		// Get stash details
-		stashRef := parts[0] // e.g., stash@{0}
+		stashRef := parts[0]
 		hash := parts[1]
 		message := parts[2]
+		timestamp, _ := strconv.ParseInt(strings.TrimSpace(parts[3]), 10, 64)
+		author := strings.TrimSpace(parts[4])
 
-		// Get short hash
 		shortHash := hash
 		if len(hash) > 7 {
 			shortHash = hash[:7]
 		}
-
-		// Get the stash timestamp
-		timestampOut, _ := r.run("show", "-s", "--format=%at", stashRef)
-		timestamp, _ := strconv.ParseInt(strings.TrimSpace(timestampOut), 10, 64)
-
-		// Get author
-		authorOut, _ := r.run("show", "-s", "--format=%an", stashRef)
-		author := strings.TrimSpace(authorOut)
 
 		stash := &components.GitCommit{
 			Hash:      hash,

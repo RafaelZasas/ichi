@@ -136,6 +136,12 @@ func (r *Repository) Push() error {
 	return err
 }
 
+// HasUpstream returns true if the current branch has an upstream tracking branch.
+func (r *Repository) HasUpstream() bool {
+	_, err := r.run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	return err == nil
+}
+
 // PushSetUpstream pushes and sets the upstream.
 func (r *Repository) PushSetUpstream(remote, branch string) error {
 	_, err := r.run("push", "-u", remote, branch)
@@ -169,6 +175,12 @@ func (r *Repository) UnstageAll() error {
 // Commit creates a commit with the given message.
 func (r *Repository) Commit(message string) error {
 	_, err := r.run("commit", "-m", message)
+	return err
+}
+
+// CommitAmend amends the most recent commit with a new message and any staged changes.
+func (r *Repository) CommitAmend(message string) error {
+	_, err := r.run("commit", "--amend", "-m", message)
 	return err
 }
 

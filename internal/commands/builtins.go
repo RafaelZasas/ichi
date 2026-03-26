@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 
+	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/views"
 )
 
@@ -57,6 +58,82 @@ func init() {
 		Aliases:     []string{"f"},
 		Description: "Fetch from all remotes",
 		Handler:     handleFetch,
+	})
+
+	Register(&Command{
+		Name:        "push",
+		Aliases:     []string{"P"},
+		Description: "Push to remote",
+		Handler:     handlePush,
+	})
+
+	Register(&Command{
+		Name:        "pull",
+		Aliases:     []string{"p"},
+		Description: "Pull from remote",
+		Handler:     handlePull,
+	})
+
+	// Context-aware commands (operate on current selection)
+	Register(&Command{
+		Name:        "pick",
+		Description: "Cherry-pick selected commit",
+		Handler:     handlePick,
+	})
+
+	Register(&Command{
+		Name:        "revert",
+		Description: "Revert selected commit",
+		Handler:     handleRevert,
+	})
+
+	Register(&Command{
+		Name:        "drop",
+		Description: "Drop selected commit or stash",
+		Handler:     handleDrop,
+	})
+
+	Register(&Command{
+		Name:        "apply",
+		Description: "Apply selected stash",
+		Handler:     handleApply,
+	})
+
+	Register(&Command{
+		Name:        "pop",
+		Description: "Pop selected stash",
+		Handler:     handlePop,
+	})
+
+	Register(&Command{
+		Name:        "merge",
+		Description: "Merge selected branch",
+		Handler:     handleMerge,
+	})
+
+	Register(&Command{
+		Name:        "rebase",
+		Description: "Rebase onto selected branch",
+		Handler:     handleRebase,
+	})
+
+	Register(&Command{
+		Name:        "diff",
+		Aliases:     []string{"d"},
+		Description: "Show diff for selected commit",
+		Handler:     handleDiff,
+	})
+
+	Register(&Command{
+		Name:        "reset",
+		Description: "Reset to selected commit (soft)",
+		Handler:     handleReset,
+	})
+
+	Register(&Command{
+		Name:        "reset!",
+		Description: "Reset to selected commit (hard)",
+		Handler:     handleResetHard,
 	})
 }
 

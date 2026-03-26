@@ -14,6 +14,7 @@ import (
 	"github.com/atterpac/jig/theme"
 
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // StatusView displays the working tree status.
@@ -107,6 +108,15 @@ func (v *StatusView) setup() {
 }
 
 // nav.Component interface
+
+// Selection implements selection.Provider.
+func (v *StatusView) Selection() *selection.Context {
+	sel := &selection.Context{ViewName: v.Name()}
+	if entry := v.currentBinding().GetSelected(); entry != nil {
+		sel.File = entry
+	}
+	return sel
+}
 
 func (v *StatusView) Name() string {
 	return "Status"

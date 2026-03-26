@@ -14,6 +14,7 @@ import (
 	"github.com/atterpac/jig/theme"
 
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // CommitView displays detailed commit information.
@@ -112,6 +113,27 @@ func (v *CommitView) setup() {
 }
 
 // nav.Component interface implementation
+
+// Selection implements selection.Provider.
+func (v *CommitView) Selection() *selection.Context {
+	sel := &selection.Context{
+		ViewName:   v.Name(),
+		CommitHash: v.hash,
+	}
+	if v.commit != nil {
+		sel.Commit = &components.GitCommit{
+			Hash:      v.commit.Hash,
+			ShortHash: v.commit.ShortHash,
+			Message:   v.commit.Subject,
+			Author:    v.commit.Author,
+			Date:      v.commit.AuthorDate,
+			Parents:   v.commit.Parents,
+			IsMerge:   len(v.commit.Parents) > 1,
+			Refs:      v.commit.Refs,
+		}
+	}
+	return sel
+}
 
 func (v *CommitView) Name() string {
 	return "Commit Details"

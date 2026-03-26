@@ -15,6 +15,7 @@ import (
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // StashView displays the stash list.
@@ -86,6 +87,15 @@ func (v *StashView) setup() {
 }
 
 // nav.Component interface
+
+// Selection implements selection.Provider.
+func (v *StashView) Selection() *selection.Context {
+	sel := &selection.Context{ViewName: v.Name()}
+	if stash := v.binding.GetSelected(); stash != nil {
+		sel.Stash = stash
+	}
+	return sel
+}
 
 func (v *StashView) Name() string {
 	return "Stash"

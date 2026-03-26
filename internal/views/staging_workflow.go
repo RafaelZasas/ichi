@@ -443,14 +443,17 @@ func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *gi
 }
 
 func (v *StagingWorkflowView) stageSelected() {
+	var tree *components.Tree
 	var node *components.TreeNode
 	var isUnstaging bool
 
 	if v.focusPanel == 0 {
-		node = v.unstagedTree.GetSelected()
+		tree = v.unstagedTree
+		node = tree.GetSelected()
 		isUnstaging = false
 	} else if v.focusPanel == 1 {
-		node = v.stagedTree.GetSelected()
+		tree = v.stagedTree
+		node = tree.GetSelected()
 		isUnstaging = true
 	} else {
 		return
@@ -464,6 +467,9 @@ func (v *StagingWorkflowView) stageSelected() {
 	if !ok {
 		return
 	}
+
+	// Remember cursor position to restore after reload
+	savedIndex := tree.GetSelectedIndex()
 
 	if isUnstaging {
 		// Unstage operation
@@ -506,15 +512,21 @@ func (v *StagingWorkflowView) stageSelected() {
 	}
 
 	v.loadFiles()
+
+	// Restore cursor position in the same tree (clamped to new bounds)
+	tree.SetSelectedIndex(savedIndex)
 }
 
 func (v *StagingWorkflowView) discardSelected() {
+	var tree *components.Tree
 	var node *components.TreeNode
 
 	if v.focusPanel == 0 {
-		node = v.unstagedTree.GetSelected()
+		tree = v.unstagedTree
+		node = tree.GetSelected()
 	} else if v.focusPanel == 1 {
-		node = v.stagedTree.GetSelected()
+		tree = v.stagedTree
+		node = tree.GetSelected()
 	} else {
 		return
 	}
@@ -527,6 +539,8 @@ func (v *StagingWorkflowView) discardSelected() {
 	if !ok {
 		return
 	}
+
+	savedIndex := tree.GetSelectedIndex()
 
 	ShowConfirmModal(v.app, "Discard Changes",
 		"Discard selected changes? This cannot be undone.",
@@ -551,6 +565,7 @@ func (v *StagingWorkflowView) discardSelected() {
 				}
 			}
 			v.loadFiles()
+			tree.SetSelectedIndex(savedIndex)
 		})
 }
 

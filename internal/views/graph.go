@@ -15,6 +15,7 @@ import (
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // PreloadedGraph holds graph data loaded during splash screen.
@@ -135,7 +136,46 @@ func (v *GraphView) Name() string {
 	return "Commit Graph"
 }
 
+// Selection implements selection.Provider.
+func (v *GraphView) Selection() *selection.Context {
+	sel := &selection.Context{ViewName: v.Name()}
+	if commit := v.gitGraph.GetSelected(); commit != nil {
+		sel.Commit = commit
+		sel.CommitHash = commit.Hash
+	}
+	return sel
+}
+
+// SetPreloadedGraph sets graph data that was loaded during splash.
+func (v *GraphView) SetPreloadedGraph(p *PreloadedGraph) {
+	v.preloaded = p
+}
+
 func (v *GraphView) Start() {
+	if v.preloaded != nil {
+		graph := v.preloaded.Graph
+		hasChanges := v.preloaded.HasChanges
+		v.preloaded = nil // Only use once
+
+		if hasChanges {
+			pseudoNode := &components.GitCommit{
+				Hash:         "unstaged",
+				ShortHash:    "○",
+				Message:      "Working Changes",
+				IsPseudoNode: true,
+				PseudoType:   "unstaged",
+				Column:       0,
+			}
+			graph.Commits = append([]*components.GitCommit{pseudoNode}, graph.Commits...)
+			graph.LayoutGraph()
+		}
+
+		v.gitGraph.SetGraph(graph)
+		if commit := v.gitGraph.GetSelected(); commit != nil {
+			v.updateDetail(commit)
+		}
+		return
+	}
 	v.refresh()
 }
 

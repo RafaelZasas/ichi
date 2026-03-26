@@ -13,6 +13,7 @@ import (
 	"github.com/atterpac/jig/theme"
 
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // FileLogView displays commits that affected a specific file.
@@ -90,6 +91,23 @@ func (v *FileLogView) setup() {
 }
 
 // nav.Component interface implementation
+
+// Selection implements selection.Provider.
+func (v *FileLogView) Selection() *selection.Context {
+	sel := &selection.Context{ViewName: v.Name()}
+	row, _ := v.logTable.GetSelection()
+	if row >= 0 && row < len(v.entries) {
+		entry := v.entries[row]
+		sel.Commit = &components.GitCommit{
+			Hash:      entry.Hash,
+			ShortHash: entry.ShortHash,
+			Message:   entry.Subject,
+			Author:    entry.Author,
+		}
+		sel.CommitHash = entry.Hash
+	}
+	return sel
+}
 
 func (v *FileLogView) Name() string {
 	return "File History"

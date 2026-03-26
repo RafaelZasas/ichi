@@ -14,6 +14,7 @@ import (
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/gxt/internal/selection"
 )
 
 // BranchesView displays the branch list.
@@ -87,6 +88,15 @@ func (v *BranchesView) setup() {
 }
 
 // nav.Component interface
+
+// Selection implements selection.Provider.
+func (v *BranchesView) Selection() *selection.Context {
+	sel := &selection.Context{ViewName: v.Name()}
+	if branch := v.binding.GetSelected(); branch != nil {
+		sel.Branch = branch
+	}
+	return sel
+}
 
 func (v *BranchesView) Name() string {
 	return "Branches"

@@ -3,6 +3,7 @@ package git
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -95,12 +96,18 @@ func (r *Repository) LoadGraph(limit int) (*components.GitGraphData, error) {
 
 // populateAheadBehind fetches ahead/behind counts for commits with local branches.
 func (r *Repository) populateAheadBehind(graph *components.GitGraphData) {
+	type branchQuery struct {
+		commit      *components.GitCommit
+		localBranch string
+		hasRemote   bool
+	}
+
+	var queries []branchQuery
 	for _, commit := range graph.Commits {
 		if len(commit.Refs) == 0 {
 			continue
 		}
 
-		// Find a local branch ref (not origin/, not HEAD)
 		var localBranch string
 		hasRemote := false
 		for _, ref := range commit.Refs {
@@ -115,25 +122,35 @@ func (r *Repository) populateAheadBehind(graph *components.GitGraphData) {
 			continue
 		}
 
-		// Get ahead/behind from upstream
-		// Try the tracking branch first
-		upstream := "origin/" + localBranch
-		out, err := r.run("rev-list", "--left-right", "--count", localBranch+"..."+upstream)
-		if err != nil {
-			// No upstream tracking, but if there's a remote ref at this commit, it's synced
-			if hasRemote {
-				commit.Ahead = 0
-				commit.Behind = 0
-			}
-			continue
-		}
-
-		parts := strings.Fields(strings.TrimSpace(out))
-		if len(parts) >= 2 {
-			commit.Ahead, _ = strconv.Atoi(parts[0])
-			commit.Behind, _ = strconv.Atoi(parts[1])
-		}
+		queries = append(queries, branchQuery{commit, localBranch, hasRemote})
 	}
+
+	if len(queries) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(queries))
+	for _, q := range queries {
+		go func(q branchQuery) {
+			defer wg.Done()
+			upstream := "origin/" + q.localBranch
+			out, err := r.run("rev-list", "--left-right", "--count", q.localBranch+"..."+upstream)
+			if err != nil {
+				if q.hasRemote {
+					q.commit.Ahead = 0
+					q.commit.Behind = 0
+				}
+				return
+			}
+			parts := strings.Fields(strings.TrimSpace(out))
+			if len(parts) >= 2 {
+				q.commit.Ahead, _ = strconv.Atoi(parts[0])
+				q.commit.Behind, _ = strconv.Atoi(parts[1])
+			}
+		}(q)
+	}
+	wg.Wait()
 }
 
 // LoadCommit loads detailed information about a single commit.
@@ -202,34 +219,61 @@ func (r *Repository) LoadCommit(hash string) (*CommitDetail, error) {
 		}
 	}
 
-	// Get stats
-	// For merge commits, use -m --first-parent to show stats against first parent
-	statsOut, _ := r.run("show", "-m", "--first-parent", "--stat", "--format=", hash)
-	stats := parseStats(statsOut)
+	// Run independent git commands in parallel
+	var (
+		stats          CommitStats
+		files          []ChangedFile
+		parentSubjects []string
+		branches       []string
+		wg             sync.WaitGroup
+	)
 
-	// Get changed files with numstat for per-file stats
-	// For merge commits (like stashes), we need to use -m to show diffs against parents
-	filesOut, _ := r.run("show", "-m", "--first-parent", "--name-status", "--format=", hash)
-	files := parseChangedFiles(filesOut)
+	wg.Add(3)
 
-	// Get per-file stats
-	numstatOut, _ := r.run("show", "-m", "--first-parent", "--numstat", "--format=", hash)
-	parseFileNumstat(numstatOut, files)
+	// Stats + files + numstat (sequential since files feeds into numstat)
+	go func() {
+		defer wg.Done()
+		// Get changed files with name-status and numstat in parallel
+		var filesOut, numstatOut, statsOut string
+		var innerWg sync.WaitGroup
+		innerWg.Add(3)
+		go func() { defer innerWg.Done(); statsOut, _ = r.run("show", "-m", "--first-parent", "--stat", "--format=", hash) }()
+		go func() { defer innerWg.Done(); filesOut, _ = r.run("show", "-m", "--first-parent", "--name-status", "--format=", hash) }()
+		go func() { defer innerWg.Done(); numstatOut, _ = r.run("show", "-m", "--first-parent", "--numstat", "--format=", hash) }()
+		innerWg.Wait()
+		stats = parseStats(statsOut)
+		files = parseChangedFiles(filesOut)
+		parseFileNumstat(numstatOut, files)
+	}()
 
-	// Get parent subjects
-	var parentSubjects []string
-	for _, parentHash := range parents {
-		subjectOut, err := r.run("log", "-1", "--format=%s", parentHash)
-		if err == nil {
-			parentSubjects = append(parentSubjects, strings.TrimSpace(subjectOut))
-		} else {
-			parentSubjects = append(parentSubjects, "")
+	// Parent subjects (all in parallel)
+	go func() {
+		defer wg.Done()
+		parentSubjects = make([]string, len(parents))
+		if len(parents) == 0 {
+			return
 		}
-	}
+		var pWg sync.WaitGroup
+		pWg.Add(len(parents))
+		for i, parentHash := range parents {
+			go func(idx int, ph string) {
+				defer pWg.Done()
+				if out, err := r.run("log", "-1", "--format=%s", ph); err == nil {
+					parentSubjects[idx] = strings.TrimSpace(out)
+				}
+			}(i, parentHash)
+		}
+		pWg.Wait()
+	}()
 
-	// Get branches containing this commit
-	branchesOut, _ := r.run("branch", "-a", "--contains", hash)
-	branches := parseBranchList(branchesOut)
+	// Branches containing this commit
+	go func() {
+		defer wg.Done()
+		branchesOut, _ := r.run("branch", "-a", "--contains", hash)
+		branches = parseBranchList(branchesOut)
+	}()
+
+	wg.Wait()
 
 	return &CommitDetail{
 		Hash:           parts[0],
@@ -349,8 +393,8 @@ func (r *Repository) SearchCommits(query string, limit int) ([]*components.GitCo
 
 // LoadStashes loads stash entries as GitCommits.
 func (r *Repository) LoadStashes() ([]*components.GitCommit, error) {
-	// Format: stash@{n}|hash|message
-	out, err := r.run("stash", "list", "--format=%gd|%H|%s")
+	// Get all stash info in a single command
+	out, err := r.run("stash", "list", "--format=%gd|%H|%s|%at|%an")
 	if err != nil {
 		return nil, nil // No stashes or stash not supported
 	}

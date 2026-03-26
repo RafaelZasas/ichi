@@ -17,6 +17,34 @@ import (
 	"github.com/atterpac/gxt/internal/git"
 )
 
+// PreloadedGraph holds graph data loaded during splash screen.
+type PreloadedGraph struct {
+	Graph      *components.GitGraphData
+	HasChanges bool
+}
+
+// PreloadGraph loads graph data in the background (called before UI is ready).
+func PreloadGraph(repo *git.Repository) (*PreloadedGraph, error) {
+	graph, err := repo.LoadGraph(500)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for working changes
+	hasChanges := false
+	status, err := repo.Status()
+	if err == nil {
+		for _, entry := range status {
+			if entry.WorkStatus != 0 || entry.IndexStatus != 0 || entry.IsUntracked {
+				hasChanges = true
+				break
+			}
+		}
+	}
+
+	return &PreloadedGraph{Graph: graph, HasChanges: hasChanges}, nil
+}
+
 // GraphView displays the commit graph.
 type GraphView struct {
 	flex        *tview.Flex
@@ -28,6 +56,7 @@ type GraphView struct {
 	app         *layout.App
 	actions     *input.ActionRegistry
 	showStashes bool
+	preloaded   *PreloadedGraph
 
 	// Search
 	searchActive  bool

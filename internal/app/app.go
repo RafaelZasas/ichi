@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/atterpac/jig/layout"
 	"github.com/atterpac/jig/theme"
@@ -25,10 +26,25 @@ const (
 
 // UpdateStatusBar updates the status bar with repository information.
 func UpdateStatusBar(statusBar *layout.StatusBar, repo *git.Repository) {
-	branch := repo.CurrentBranch()
-	shortHead := repo.ShortHEAD()
-	ahead, behind := repo.AheadBehind()
-	isDetached := repo.IsDetachedHEAD()
+	var (
+		branch     string
+		shortHead  string
+		ahead      int
+		behind     int
+		isDetached bool
+		staged     git.ChangeStats
+		unstaged   git.ChangeStats
+		stashCount int
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(5)
+	go func() { defer wg.Done(); branch = repo.CurrentBranch() }()
+	go func() { defer wg.Done(); shortHead = repo.ShortHEAD() }()
+	go func() { defer wg.Done(); ahead, behind = repo.AheadBehind() }()
+	go func() { defer wg.Done(); isDetached = repo.IsDetachedHEAD() }()
+	go func() { defer wg.Done(); staged, unstaged, stashCount = repo.StatusCounts() }()
+	wg.Wait()
 
 	statusBar.ClearSections()
 
@@ -82,9 +98,6 @@ func UpdateStatusBar(statusBar *layout.StatusBar, repo *git.Repository) {
 			Color: theme.Warning(),
 		})
 	}
-
-	// Get detailed status for staged/unstaged counts
-	staged, unstaged, stashCount := repo.StatusCounts()
 
 	// Staged changes (files ready to commit)
 	if staged.Files > 0 {

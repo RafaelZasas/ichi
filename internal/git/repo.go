@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Repository represents a git repository.
@@ -211,38 +212,46 @@ type ChangeStats struct {
 
 // StatusCounts returns counts for staged changes, unstaged changes, and stashes.
 func (r *Repository) StatusCounts() (staged, unstaged ChangeStats, stashCount int) {
-	// Get staged stats
-	stagedOut, err := r.run("diff", "--cached", "--numstat")
-	if err == nil {
-		staged = parseNumstat(stagedOut)
-	}
+	var wg sync.WaitGroup
+	wg.Add(4)
 
-	// Get unstaged stats (modified tracked files)
-	unstagedOut, err := r.run("diff", "--numstat")
-	if err == nil {
-		unstaged = parseNumstat(unstagedOut)
-	}
+	go func() {
+		defer wg.Done()
+		if out, err := r.run("diff", "--cached", "--numstat"); err == nil {
+			staged = parseNumstat(out)
+		}
+	}()
 
-	// Count untracked files separately
-	untrackedOut, err := r.run("ls-files", "--others", "--exclude-standard")
-	if err == nil {
-		for _, line := range strings.Split(untrackedOut, "\n") {
-			if strings.TrimSpace(line) != "" {
-				unstaged.Untracked++
+	go func() {
+		defer wg.Done()
+		if out, err := r.run("diff", "--numstat"); err == nil {
+			unstaged = parseNumstat(out)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if out, err := r.run("ls-files", "--others", "--exclude-standard"); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				if strings.TrimSpace(line) != "" {
+					unstaged.Untracked++
+				}
 			}
 		}
-	}
+	}()
 
-	// Get stash count
-	stashOut, err := r.run("stash", "list")
-	if err == nil {
-		for _, line := range strings.Split(stashOut, "\n") {
-			if strings.TrimSpace(line) != "" {
-				stashCount++
+	go func() {
+		defer wg.Done()
+		if out, err := r.run("stash", "list"); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				if strings.TrimSpace(line) != "" {
+					stashCount++
+				}
 			}
 		}
-	}
+	}()
 
+	wg.Wait()
 	return staged, unstaged, stashCount
 }
 

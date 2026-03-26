@@ -59,9 +59,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. Show splash screen (unless skipped)
+	// 3. Start loading data in background while splash shows
+	type graphResult struct {
+		graph *views.PreloadedGraph
+		err   error
+	}
+	graphCh := make(chan graphResult, 1)
+	dataReady := make(chan struct{})
+	go func() {
+		g, err := views.PreloadGraph(repo)
+		graphCh <- graphResult{g, err}
+		close(dataReady)
+	}()
+
+	// Show splash screen (unless skipped) — dismisses when data is ready
 	if !*noSplash {
-		if err := showSplash(); err != nil {
+		if err := showSplash(dataReady); err != nil {
 			// Splash was cancelled or failed, just continue
 		}
 	}
@@ -137,7 +150,12 @@ func main() {
 	application.SetInputCapture(globalInputHandler(application, repo, statusBar, &previousFocus))
 
 	// 8. Push initial view (Graph is the home view)
+	// Wait for preloaded graph data
+	preloaded := <-graphCh
 	graphView := views.NewGraphView(application, repo)
+	if preloaded.err == nil && preloaded.graph != nil {
+		graphView.SetPreloadedGraph(preloaded.graph)
+	}
 	application.Pages().Push(graphView)
 	application.Crumbs().SetPath([]string{"Graph"})
 
@@ -148,7 +166,7 @@ func main() {
 	}
 }
 
-func showSplash() error {
+func showSplash(ready <-chan struct{}) error {
 	splash := components.NewSplash().
 		SetLogo(gxtLogo).
 		SetLogoWidth(40).
@@ -156,7 +174,7 @@ func showSplash() error {
 		SetStatusHeight(1).
 		SetStatus("[" + theme.TagFgDim() + "]Made with ♥ by " + footerURL + "[-]").
 		SetGradient(theme.GradientDiagonal).
-		SetAutoDismiss(3 * time.Second).
+		SetAutoDismiss(5 * time.Second). // Fallback max; normally dismissed earlier
 		SetDismissKeys([]components.DismissKey{components.DismissAnyKey})
 
 	splash.Build()
@@ -167,6 +185,16 @@ func showSplash() error {
 	splash.SetOnClose(func() {
 		splashApp.Stop()
 	})
+
+	// Dismiss splash once data is ready (with a brief minimum display)
+	go func() {
+		minDisplay := time.After(500 * time.Millisecond)
+		<-ready    // Wait for graph data
+		<-minDisplay // Ensure splash shows for at least 500ms
+		splashApp.QueueUpdateDraw(func() {
+			splashApp.Stop()
+		})
+	}()
 
 	splashApp.SetRoot(splash, true)
 	return splashApp.Run()

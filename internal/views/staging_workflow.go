@@ -24,6 +24,7 @@ type nodeData struct {
 	hunk      *git.DiffHunk
 	hunkIndex int
 	isFile    bool
+	isStaged  bool
 }
 
 // StagingWorkflowView provides a tinder-style hunk review workflow.
@@ -130,7 +131,7 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 		// Preview panel hints
 		return []components.KeyHint{
 			{Key: "j/k", Description: "Scroll"},
-			{Key: "h", Description: "Back to tree"},
+			{Key: "Tab", Description: "Switch panel"},
 			{Key: "Space", Description: "Stage/Unstage"},
 			{Key: "e", Description: "Edit"},
 			{Key: "d", Description: "Discard"},
@@ -139,8 +140,8 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 	// Tree panel hints
 	hints := []components.KeyHint{
 		{Key: "j/k", Description: "Navigate"},
-		{Key: "Tab", Description: "Switch tree"},
-		{Key: "l", Description: "View diff"},
+		{Key: "l/h", Description: "Expand/Collapse"},
+		{Key: "Tab", Description: "Switch panel"},
 		{Key: "Space", Description: "Stage/Unstage"},
 		{Key: "d", Description: "Discard"},
 		{Key: "e", Description: "Edit"},
@@ -148,6 +149,7 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 	// Show commit/stash only if there are staged files
 	if len(v.stagedFiles) > 0 {
 		hints = append(hints, components.KeyHint{Key: "c", Description: "Commit"})
+		hints = append(hints, components.KeyHint{Key: "a", Description: "Amend"})
 		hints = append(hints, components.KeyHint{Key: "s", Description: "Stash"})
 	}
 	return hints
@@ -286,8 +288,9 @@ func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged boo
 		Icon:     v.statusIcon(entry),
 		Expanded: true,
 		Data: &nodeData{
-			file:   entry,
-			isFile: true,
+			file:     entry,
+			isFile:   true,
+			isStaged: isStaged,
 		},
 	}
 
@@ -310,6 +313,7 @@ func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged boo
 					hunk:      hunk,
 					hunkIndex: i,
 					isFile:    false,
+					isStaged:  isStaged,
 				},
 			}
 			fileNode.AddChild(hunkNode)
@@ -355,10 +359,10 @@ func (v *StagingWorkflowView) onNodeHighlight(node *components.TreeNode) {
 
 	if data.isFile {
 		// Show file overview
-		v.renderFilePreview(data.file)
+		v.renderFilePreview(data.file, data.isStaged)
 	} else {
 		// Show specific hunk
-		v.renderHunkPreview(data.file, data.hunk, data.hunkIndex)
+		v.renderHunkPreview(data.file, data.hunk, data.hunkIndex, data.isStaged)
 	}
 }
 
@@ -367,7 +371,7 @@ func (v *StagingWorkflowView) onNodeSelect(node *components.TreeNode) {
 	v.stageSelected()
 }
 
-func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry) {
+func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged bool) {
 	var text strings.Builder
 
 	text.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n\n", theme.TagAccent(), entry.Path))
@@ -390,10 +394,18 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry) {
 			}
 		}
 	} else {
-		text.WriteString(fmt.Sprintf("[%s]Status:[-] %s\n\n", theme.TagFgDim(), entry.WorkStatus.String()))
+		status := entry.WorkStatus
+		if isStaged {
+			status = entry.IndexStatus
+		}
+		text.WriteString(fmt.Sprintf("[%s]Status:[-] %s\n\n", theme.TagFgDim(), status.String()))
 
-		// Show all hunks for this file
-		hunks := v.fileHunks[entry.Path]
+		// Show all hunks for this file (staged files use "staged:" prefix key)
+		hunkKey := entry.Path
+		if isStaged {
+			hunkKey = "staged:" + entry.Path
+		}
+		hunks := v.fileHunks[hunkKey]
 		for i, hunk := range hunks {
 			if i > 0 {
 				text.WriteString("\n")
@@ -416,10 +428,14 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry) {
 	v.previewText.ScrollToBeginning()
 }
 
-func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *git.DiffHunk, hunkIndex int) {
+func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *git.DiffHunk, hunkIndex int, isStaged bool) {
 	var text strings.Builder
 
-	hunks := v.fileHunks[entry.Path]
+	hunkKey := entry.Path
+	if isStaged {
+		hunkKey = "staged:" + entry.Path
+	}
+	hunks := v.fileHunks[hunkKey]
 	text.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagAccent(), entry.Path))
 	text.WriteString(fmt.Sprintf("[%s]Hunk %d/%d[-]\n\n", theme.TagFgDim(), hunkIndex+1, len(hunks)))
 
@@ -788,18 +804,37 @@ func (v *StagingWorkflowView) commit() {
 		return
 	}
 
-	ShowTextAreaModal(v.app, "Commit", "Commit message:", "", func(message string) {
-		if message == "" {
-			ShowErrorModal(v.app, "Invalid Message", "Commit message cannot be empty")
-			return
-		}
-
+	ShowCommitModal(v.app, "Commit", "", func(message string) {
 		if err := v.repo.Commit(message); err != nil {
 			ShowErrorModal(v.app, "Commit Failed", err.Error())
 			return
 		}
 
 		app.ToastSuccess("Changes committed successfully")
+		v.loadFiles()
+
+		// If no more changes, pop back to previous view
+		if len(v.unstagedFiles) == 0 && len(v.stagedFiles) == 0 {
+			v.app.Pages().Pop()
+		}
+	})
+}
+
+func (v *StagingWorkflowView) amend() {
+	// Get the previous commit message to pre-populate
+	prevMsg, err := v.repo.GetCommitMessage("HEAD")
+	if err != nil {
+		ShowErrorModal(v.app, "Amend Failed", "Could not read previous commit: "+err.Error())
+		return
+	}
+
+	ShowCommitModal(v.app, "Amend Commit", prevMsg, func(message string) {
+		if err := v.repo.CommitAmend(message); err != nil {
+			ShowErrorModal(v.app, "Amend Failed", err.Error())
+			return
+		}
+
+		app.ToastSuccess("Commit amended successfully")
 		v.loadFiles()
 
 		// If no more changes, pop back to previous view
@@ -871,18 +906,20 @@ func (v *StagingWorkflowView) InputHandler() func(*tcell.EventKey, func(tview.Pr
 			return
 		}
 
-		// Handle Tab to cycle between unstaged and staged trees only
-		if event.Key() == tcell.KeyTab {
-			if v.focusPanel == 0 {
-				v.focusPanel = 1
-			} else if v.focusPanel == 1 {
-				v.focusPanel = 0
+		// Handle Tab to cycle between unstaged, staged, and preview
+		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
+			if event.Key() == tcell.KeyBacktab {
+				// Reverse cycle
+				if v.focusPanel == 0 {
+					v.focusPanel = 2
+				} else {
+					v.focusPanel--
+				}
 			} else {
-				// If somehow on preview, go to unstaged
-				v.focusPanel = 0
+				v.focusPanel = (v.focusPanel + 1) % 3
 			}
 			v.updateFocusState()
-			// Trigger preview update when switching trees
+			// Trigger preview update when switching to a tree
 			if v.focusPanel == 0 {
 				if node := v.unstagedTree.GetSelected(); node != nil {
 					v.onNodeHighlight(node)
@@ -920,17 +957,14 @@ func (v *StagingWorkflowView) InputHandler() func(*tcell.EventKey, func(tview.Pr
 				case 'c', 'C':
 					v.commit()
 					return
+				case 'a', 'A':
+					v.amend()
+					return
 				case 's', 'S':
 					v.stash()
 					return
 				case 'q':
 					v.app.Pages().Pop()
-					return
-				case 'l':
-					// Move to preview panel, remember which tree we came from
-					v.lastTreePanel = v.focusPanel
-					v.focusPanel = 2
-					v.updateFocusState()
 					return
 				}
 			}

@@ -235,11 +235,11 @@ func (v *GraphView) refresh() {
 	}
 
 	// Check for unstaged changes and prepend pseudo-node
-	if v.hasUnstagedChanges() {
+	if v.hasWorkingChanges() {
 		pseudoNode := &components.GitCommit{
 			Hash:         "unstaged",
 			ShortHash:    "○",
-			Message:      "Unstaged Changes",
+			Message:      "Working Changes",
 			IsPseudoNode: true,
 			PseudoType:   "unstaged",
 			Column:       0,
@@ -256,15 +256,14 @@ func (v *GraphView) refresh() {
 	}
 }
 
-// hasUnstagedChanges returns true if there are unstaged changes in the repo.
-func (v *GraphView) hasUnstagedChanges() bool {
+// hasWorkingChanges returns true if there are staged or unstaged changes in the repo.
+func (v *GraphView) hasWorkingChanges() bool {
 	status, err := v.repo.Status()
 	if err != nil {
 		return false
 	}
 	for _, entry := range status {
-		// Check for unstaged modifications or untracked files
-		if entry.WorkStatus != 0 || entry.IsUntracked {
+		if entry.WorkStatus != 0 || entry.IndexStatus != 0 || entry.IsUntracked {
 			return true
 		}
 	}

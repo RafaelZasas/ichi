@@ -15,8 +15,13 @@ import (
 func ShowConfirmModal(app *layout.App, title, message string, onConfirm func()) {
 	modal := components.NewConfirmModal(title, message).
 		SetOnSubmit(func() {
-			app.Pages().Pop()
-			onConfirm()
+			// Defer the pop + callback off the input-handling goroutine, mirroring
+			// the framework's Esc-dismiss path. Popping the page stack inline during
+			// key handling races focus restoration and leaves the app unfocused.
+			go app.QueueUpdateDraw(func() {
+				app.Pages().Pop()
+				onConfirm()
+			})
 		}).
 		SetOnClose(func() {
 			app.Pages().Pop()

@@ -9,17 +9,6 @@ newest commit at the top, with branch and merge lines drawn alongside.
 
 ![The ichi commit graph, with a working-changes panel on the right](/images/views/graph.png)
 
-```text
-  ● a1b2c3d  feat: add interactive staging        (HEAD -> main)
-  │
-  ● 9f8e7d6  fix: handle empty diff in blame view
-  │
-  ●─┐ 4c5b6a7  Merge branch 'feature/prs'
-  │ │
-  │ ● 2d3e4f5  feat: GitHub pull request list
-  ●─┘ 1a2b3c4  chore: bump dado to v0.4
-```
-
 ## Navigating
 
 | Key | Action |
@@ -49,4 +38,4 @@ commit. See the full list in [Keybindings & Commands](/guides/keybindings/).
 
 - Press <kbd>s</kbd> for [Status & staging](/features/staging/).
 - Press <kbd>b</kbd> for [Branches](/features/branches/).
-- Press <kbd>Enter</kbd> on a commit, then explore its [diff](/features/diff-blame/).
+- Press <kbd>Enter</kbd> on a commit, then explore its [diff](/features/diff/).

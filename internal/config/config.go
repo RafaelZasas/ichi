@@ -1,20 +1,34 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	configFile     = "config.json"
-	defaultTheme   = "tokyonight-night"
+	configFile   = "config.yaml"
+	defaultTheme = "tokyonight-night"
 )
+
+// configHeader is prepended when ichi writes the config file so a freshly
+// generated config.yaml documents itself.
+const configHeader = `# ichi configuration
+# Location: $XDG_CONFIG_HOME/ichi/config.yaml (usually ~/.config/ichi/config.yaml)
+#
+# This file is rewritten by ichi when you change settings from the UI, but you
+# can also edit it by hand. Unknown keys are ignored.
+
+`
 
 // Config holds all user preferences.
 type Config struct {
-	Theme string `json:"theme"`
+	// Theme is the name of the active color theme, e.g. "tokyonight-night",
+	// "catppuccin-mocha", "nord", "dracula", "gruvbox-dark", "rosepine".
+	// Run any theme from the command palette to see the full list.
+	Theme string `yaml:"theme"`
 }
 
 var (
@@ -65,7 +79,7 @@ func load() {
 	}
 
 	var loaded Config
-	if err := json.Unmarshal(data, &loaded); err != nil {
+	if err := yaml.Unmarshal(data, &loaded); err != nil {
 		return
 	}
 
@@ -77,7 +91,7 @@ func load() {
 
 func save() {
 	mu.RLock()
-	data, err := json.MarshalIndent(current, "", "  ")
+	data, err := yaml.Marshal(current)
 	mu.RUnlock()
 	if err != nil {
 		return
@@ -88,5 +102,5 @@ func save() {
 		return
 	}
 
-	_ = os.WriteFile(configPath, data, 0644)
+	_ = os.WriteFile(configPath, append([]byte(configHeader), data...), 0644)
 }

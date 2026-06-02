@@ -18,11 +18,8 @@ wherever you happen to be when you want to sync.
 
 ## A typical loop
 
-```text
-:w        # stage everything
-c         # commit
-:push     # send it up
-```
+<code>:w</code> to stage everything, <kbd>c</kbd> to commit, then <code>:push</code>
+to send it up.
 
 ## After fetching
 

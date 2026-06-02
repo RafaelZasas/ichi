@@ -7,8 +7,6 @@ When a merge, rebase, or pull can't apply cleanly, ichi opens the **conflict
 resolution** view instead of leaving you to untangle conflict markers in an
 editor.
 
-![The three-way conflict resolution view: ours, base, and theirs with a resolved panel](/images/views/conflicts.png)
-
 ## How you get here
 
 Any operation that can conflict drops you into this view automatically:

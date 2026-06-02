@@ -27,11 +27,7 @@ key or view it lives under — just type a few letters.
 ## The command line
 
 Prefer typing the verb? Press <kbd>:</kbd> to open a command line and run a Git
-command directly:
-
-```text
-:rebase main
-```
+command directly — like <code>:rebase main</code>.
 
 The command line acts on whatever is selected in the current view — a commit, a
 branch, a stash. See the full command list in

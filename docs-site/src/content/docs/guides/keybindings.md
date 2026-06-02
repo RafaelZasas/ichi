@@ -10,8 +10,6 @@ does the sensible thing for the view you're in — but a handful are global.
 Press <kbd>?</kbd> at any time to see the keys available in the current view.
 :::
 
-![The ichi help view listing keybindings](/images/views/help.png)
-
 ## Global keys
 
 These work from (almost) anywhere:

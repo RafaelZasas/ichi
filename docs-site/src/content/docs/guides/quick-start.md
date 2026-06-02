@@ -38,11 +38,7 @@ message, then <kbd>Enter</kbd> to confirm (<kbd>Esc</kbd> cancels).
 
 ## 4. Push
 
-Press <kbd>:</kbd> to open the command line and run:
-
-```text
-:push
-```
+Press <kbd>:</kbd> to open the command line and run <code>:push</code>.
 
 ichi pushes the current branch to its remote. (<kbd>:pull</kbd> and
 <kbd>:fetch</kbd> work the same way.) See [Push, Pull & Fetch](/features/syncing/).

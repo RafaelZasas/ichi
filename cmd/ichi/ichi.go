@@ -119,7 +119,21 @@ func main() {
 
 	// Wire dado's built-in theme selector (live preview + cancel restore).
 	// Persisting the choice happens through OnChange.
+	//
+	// themes.All() excludes hidden themes (e.g. "atterpac"), so EnableThemes
+	// would reject a hidden saved theme as its Default and fall back to the
+	// built-in default. Inject the saved theme into the map so it survives as
+	// the active theme; keep Names as the visible (non-hidden) list so hidden
+	// themes stay out of the selector.
+	themeSet := themes.All()
+	if themeSet[savedTheme] == nil {
+		if t := themes.Get(savedTheme); t != nil {
+			themeSet[savedTheme] = t
+		}
+	}
 	application.EnableThemes(layout.ThemeOptions{
+		Themes:   themeSet,
+		Names:    themes.Names(),
 		Default:  savedTheme,
 		OnChange: config.SetTheme,
 	})

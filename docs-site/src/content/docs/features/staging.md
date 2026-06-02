@@ -6,12 +6,12 @@ description: Stage changes by file, hunk, or line, then commit — all from the 
 ichi's staging workflow lets you build a commit at whatever granularity you
 need: whole files, individual hunks, or hand-picked lines.
 
+![The single-file diff with a selected line highlighted for staging](/images/views/staging-hunks.png)
+
 ## The status view
 
 Press <kbd>s</kbd> from the graph to open **Status**. It lists your changed
 files, separated into unstaged and staged.
-
-![The status view listing staged and unstaged files with a details panel](/images/views/status.png)
 
 | Key | Action |
 |---|---|
@@ -31,14 +31,12 @@ For a focused review, the staging workflow puts your unstaged and staged file
 trees side by side with a live diff preview: move through the files on the left
 and see each one's changes on the right.
 
-![The split staging workflow: unstaged and staged file trees on the left, a diff preview on the right](/images/views/staging.png)
-
 ## Staging hunks and lines
 
 For surgical commits, press <kbd>d</kbd> to open the diff, then stage at a finer
 grain — by hunk or by hand-picked lines:
 
-![The single-file diff with a selected line highlighted for staging](/images/views/staging-hunks.png)
+![A commit diff rendered in ichi](/images/views/diff.png)
 
 | Key | Action |
 |---|---|

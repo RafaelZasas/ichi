@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -778,12 +779,15 @@ func (v *GraphView) dropCommit() {
 	ShowConfirmModal(v.app, "Drop Commit",
 		fmt.Sprintf("Drop commit %s?\n\n%s\n\nThis will remove the commit from history.", commit.ShortHash, commit.Message),
 		func() {
-			if err := v.repo.DropCommit(commit.Hash); err != nil {
-				ShowErrorModal(v.app, "Drop Failed", err.Error())
-				return
-			}
-			app.ToastSuccess(fmt.Sprintf("Dropped %s", commit.ShortHash))
-			v.refresh()
+			app.RunAsyncSimple(
+				fmt.Sprintf("Dropping %s...", commit.ShortHash),
+				func(ctx context.Context) error { return v.repo.DropCommit(commit.Hash) },
+				func() {
+					app.ToastSuccess(fmt.Sprintf("Dropped %s", commit.ShortHash))
+					v.refresh()
+				},
+				func(err error) { ShowErrorModal(v.app, "Drop Failed", err.Error()) },
+			)
 		})
 }
 

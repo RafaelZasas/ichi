@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/atterpac/ichi/internal/app"
@@ -283,11 +284,12 @@ func handleDrop(ctx *Context, args []string) error {
 		views.ShowConfirmModal(ctx.App, "Drop Stash",
 			fmt.Sprintf("Drop stash@{%d}?\n%s", stash.Index, stash.Message),
 			func() {
-				if err := ctx.Repo.StashDropIndex(stash.Index); err != nil {
-					views.ShowErrorModal(ctx.App, "Drop Failed", err.Error())
-					return
-				}
-				app.ToastSuccess(fmt.Sprintf("Dropped stash@{%d}", stash.Index))
+				app.RunAsyncSimple(
+					fmt.Sprintf("Dropping stash@{%d}...", stash.Index),
+					func(context.Context) error { return ctx.Repo.StashDropIndex(stash.Index) },
+					func() { app.ToastSuccess(fmt.Sprintf("Dropped stash@{%d}", stash.Index)) },
+					func(err error) { views.ShowErrorModal(ctx.App, "Drop Failed", err.Error()) },
+				)
 			})
 		return nil
 	}
@@ -296,11 +298,12 @@ func handleDrop(ctx *Context, args []string) error {
 		views.ShowConfirmModal(ctx.App, "Drop Commit",
 			fmt.Sprintf("Drop %s from history?\n%s\nThis rewrites history!", commit.ShortHash, commit.Message),
 			func() {
-				if err := ctx.Repo.DropCommit(commit.Hash); err != nil {
-					views.ShowErrorModal(ctx.App, "Drop Failed", err.Error())
-					return
-				}
-				app.ToastSuccess(fmt.Sprintf("Dropped %s", commit.ShortHash))
+				app.RunAsyncSimple(
+					fmt.Sprintf("Dropping %s...", commit.ShortHash),
+					func(context.Context) error { return ctx.Repo.DropCommit(commit.Hash) },
+					func() { app.ToastSuccess(fmt.Sprintf("Dropped %s", commit.ShortHash)) },
+					func(err error) { views.ShowErrorModal(ctx.App, "Drop Failed", err.Error()) },
+				)
 			})
 		return nil
 	}

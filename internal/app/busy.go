@@ -1,69 +1,48 @@
 package app
 
 import (
-	"sync"
-	"time"
+	"context"
 
-	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/anim"
+	"github.com/atterpac/dado/async"
 	"github.com/atterpac/dado/layout"
-	"github.com/gdamore/tcell/v2"
+	"github.com/atterpac/ichi/internal/git"
 )
 
-var (
-	busyMu        sync.Mutex
-	busySpinner   *components.Spinner
-	busyLabel     string
-	busyActive    bool
-	busyStatusBar *layout.StatusBar
-)
+var circleFrames = []string{"◐", "◓", "◑", "◒"}
 
-func IsBusy() bool {
-	busyMu.Lock()
-	defer busyMu.Unlock()
-	return busyActive
+func BusyIndicator(sb *layout.StatusBar, msg string) async.LoadingIndicator {
+	var cancel func()
+	frame := 0
+
+	return async.Callback(
+		func() { // Show
+			cancel = anim.Subscribe(0, func() {
+				frame = (frame + 1) % len(circleFrames)
+				sb.ClearSections()
+				sb.AddSection(layout.StatusSection{Icon: circleFrames[frame], Text: msg})
+			})
+		},
+		func() { // Hide
+			if cancel != nil {
+				cancel()
+				cancel = nil
+			}
+		},
+	)
 }
 
-func StopBusy() {
-	busyMu.Lock()
-	if busySpinner != nil {
-		busySpinner.Stop()
-		busySpinner = nil
-	}
-	busyLabel = ""
-	busyActive = false
-	busyMu.Unlock()
-}
-
-func StartBusy(label string) {
-	busyMu.Lock()
-
-	busyActive = true
-	busyLabel = label
-
-	busySpinner = components.NewSpinner().
-		SetStyle(components.SpinnerCircle).
-		SetInterval(100 * time.Millisecond).
-		SetLabel(label)
-
-	sp := busySpinner
-
-	busyMu.Unlock()
-	busyStatusBar.ClearSections().ClearRightSections()
-	sp.Start()
-}
-
-func InitBusyOverlay(application *layout.App, statusBar *layout.StatusBar) {
-	busyStatusBar = statusBar
-
-	application.GetApp().SetAfterDrawFunc(func(screen tcell.Screen) {
-		if !busyActive || busySpinner == nil {
-			return
-		}
-
-		x, y, _, _ := statusBar.GetInnerRect()
-		spinnerW := 3 + len(busyLabel) // 2 for glyph cols + space + label
-		busySpinner.SetRect(x+1, y+1, spinnerW, 1)
-
-		busySpinner.Draw(screen)
-	})
+// RunBusy is the common case: run `work`, show msg, then toast on outcome.
+func RunBusy(sb *layout.StatusBar, repo *git.Repository, busyMsg, okMsg string, work func() error) {
+	async.NewLoader[any]().
+		WithIndicator(BusyIndicator(sb, busyMsg)).
+		OnSuccess(func(any) {
+			UpdateStatusBar(sb, repo)
+			ToastSuccess(okMsg)
+		}).
+		OnError(func(err error) {
+			UpdateStatusBar(sb, repo)
+			ToastError(err.Error())
+		}).
+		Run(func(context.Context) (any, error) { return nil, work() })
 }

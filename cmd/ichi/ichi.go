@@ -199,10 +199,7 @@ func main() {
 	application.Pages().Push(graphView)
 	application.Crumbs().SetPath([]string{"Graph"})
 
-	// 9. Init the loading indicator Busy overlay
-	app.InitBusyOverlay(application, statusBar)
-
-	// 10. Run
+	// 9. Run
 	if err := application.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -242,7 +239,7 @@ func showSplash(ready <-chan struct{}) error {
 	return splashApp.Run()
 }
 
-func globalInputHandler(application *layout.App, repo *git.Repository, statusBar *layout.StatusBar, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
+func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		// Don't handle keys when in command mode
 		if statusBar.IsCommandMode() {
@@ -251,83 +248,79 @@ func globalInputHandler(application *layout.App, repo *git.Repository, statusBar
 
 		// Don't handle most keys when a modal is active (let modal handle input)
 		// Exception: Escape key should still work to dismiss modals
-		if application.Pages().CurrentIsModal() && event.Key() != tcell.KeyEscape {
+		if app.Pages().CurrentIsModal() && event.Key() != tcell.KeyEscape {
 			return event
 		}
 
 		switch {
 		// Enter command mode with ':'
 		case event.Rune() == ':':
-			if app.IsBusy() {
-				app.ToastWarning("Cannot enter command mode while busy")
-				return nil
-			}
-			*previousFocus = application.GetApp().GetFocus()
+			*previousFocus = app.GetApp().GetFocus()
 			commands.ResetHistoryIndex()
 			statusBar.EnterCommandMode()
-			application.SetFocus(statusBar)
+			app.SetFocus(statusBar)
 			return nil
 
 		// Quit on root view only (Required by dado)
-		case event.Rune() == 'q' && application.Pages().StackDepth() <= 1:
-			application.Stop()
+		case event.Rune() == 'q' && app.Pages().StackDepth() <= 1:
+			app.Stop()
 			return nil
 
 		// Go back with Esc (Required by dado)
 		case event.Key() == tcell.KeyEscape:
-			if application.Pages().CanPop() {
-				application.Pages().Pop()
+			if app.Pages().CanPop() {
+				app.Pages().Pop()
 				return nil
 			}
 
 		// Help modal (Required by dado)
 		case event.Rune() == '?':
-			showHelp(application)
+			showHelp(app)
 			return nil
 
 		// Theme selector (Required by dado)
 		case event.Rune() == 'T':
-			showThemeSelector(application)
+			showThemeSelector(app)
 			return nil
 
 		// Command palette (Ctrl+P or Ctrl+K)
 		case event.Key() == tcell.KeyCtrlP || event.Key() == tcell.KeyCtrlK:
-			views.ShowFinder(application, repo, statusBar)
+			views.ShowFinder(app, repo, statusBar)
 			return nil
 
 		// Git-specific global keys (only from root/graph view to avoid conflicts)
-		case event.Rune() == 'b' && application.Pages().StackDepth() <= 1:
-			branchView := views.NewBranchesView(application, repo)
-			application.Pages().Push(branchView)
-			application.Crumbs().SetPath([]string{"Branches"})
+		case event.Rune() == 'b' && app.Pages().StackDepth() <= 1:
+			branchView := views.NewBranchesView(app, repo)
+			app.Pages().Push(branchView)
+			app.Crumbs().SetPath([]string{"Branches"})
 			return nil
 
-		case event.Rune() == 's' && application.Pages().StackDepth() <= 1:
-			statusView := views.NewStatusView(application, repo)
-			application.Pages().Push(statusView)
-			application.Crumbs().SetPath([]string{"Status"})
+		case event.Rune() == 's' && app.Pages().StackDepth() <= 1:
+			statusView := views.NewStatusView(app, repo)
+			app.Pages().Push(statusView)
+			app.Crumbs().SetPath([]string{"Status"})
 			return nil
 
-		case event.Rune() == 'S' && application.Pages().StackDepth() <= 1:
-			stashView := views.NewStashView(application, repo)
-			application.Pages().Push(stashView)
-			application.Crumbs().SetPath([]string{"Stash"})
+		case event.Rune() == 'S' && app.Pages().StackDepth() <= 1:
+			stashView := views.NewStashView(app, repo)
+			app.Pages().Push(stashView)
+			app.Crumbs().SetPath([]string{"Stash"})
 			return nil
 
-		case event.Rune() == 'p' && application.Pages().StackDepth() <= 1:
-			prView := views.NewPRListView(application, repo)
-			application.Pages().Push(prView)
-			application.Crumbs().SetPath([]string{"PRs"})
+		case event.Rune() == 'p' && app.Pages().StackDepth() <= 1:
+			prView := views.NewPRListView(app, repo)
+			app.Pages().Push(prView)
+			app.Crumbs().SetPath([]string{"PRs"})
 			return nil
 
 		case event.Rune() == 'g':
 			// Return to graph view (home)
-			if application.Pages().StackDepth() > 1 {
+			if app.Pages().StackDepth() > 1 {
 				// Pop until we're at root
-				for application.Pages().CanPop() {
-					application.Pages().Pop()
+				for app.Pages().CanPop() {
+					app.Pages().Pop()
 				}
-				application.Crumbs().SetPath([]string{"Graph"})
+				app.Crumbs().SetPath([]string{"Graph"})
 			}
 			return nil
 		}

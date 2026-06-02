@@ -200,19 +200,13 @@ func handleCheckout(ctx *Context, args []string) error {
 }
 
 func handleFetch(ctx *Context, args []string) error {
-	app.StartBusy("fetching...")
-	go func() {
-		err := ctx.Repo.FetchAll()
-		ctx.App.QueueUpdateDraw(func() {
-			app.StopBusy()
-			app.UpdateStatusBar(ctx.StatusBar, ctx.Repo)
-			if err != nil {
-				app.ToastError(fmt.Sprintf("Failed to fetch: %v", err))
-				return
-			}
-			app.ToastSuccess("Fetched from all remotes")
-		})
-	}()
+	app.RunBusy(
+		ctx.StatusBar,
+		ctx.Repo,
+		"Fetching...",
+		"Fetched from all remotes",
+		ctx.Repo.FetchAll,
+	)
 	return nil
 }
 
@@ -239,19 +233,13 @@ func handlePush(ctx *Context, args []string) error {
 }
 
 func handlePull(ctx *Context, args []string) error {
-	app.StartBusy("pulling...")
-	go func() {
-		err := ctx.Repo.Pull()
-		ctx.App.QueueUpdateDraw(func() {
-			app.StopBusy()
-			app.UpdateStatusBar(ctx.StatusBar, ctx.Repo)
-			if err != nil {
-				app.ToastError(fmt.Sprintf("Failed to pull: %v", err))
-				return
-			}
-			app.ToastSuccess("Pulled from remote")
-		})
-	}()
+	app.RunBusy(
+		ctx.StatusBar,
+		ctx.Repo,
+		"Pulling...",
+		"Pulled from remote",
+		ctx.Repo.Pull,
+	)
 	return nil
 }
 

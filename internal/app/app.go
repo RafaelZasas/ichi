@@ -26,10 +26,6 @@ const (
 
 // UpdateStatusBar updates the status bar with repository information.
 func UpdateStatusBar(statusBar *layout.StatusBar, repo *git.Repository) {
-	if IsBusy() {
-		return
-	}
-
 	var (
 		branch     string
 		shortHead  string

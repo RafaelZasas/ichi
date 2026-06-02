@@ -225,10 +225,13 @@ func handlePush(ctx *Context, args []string) error {
 		})
 		return nil
 	}
-	if err := ctx.Repo.Push(); err != nil {
-		return fmt.Errorf("failed to push: %w", err)
-	}
-	app.ToastSuccess("Pushed to remote")
+	app.RunBusy(
+		ctx.StatusBar,
+		ctx.Repo,
+		"Pushing...",
+		"Pushed to remote",
+		ctx.Repo.Push,
+	)
 	return nil
 }
 

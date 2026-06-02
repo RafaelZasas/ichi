@@ -38,10 +38,23 @@ const ichiLogo = `
 var (
 	repoPath = flag.String("path", ".", "Path to git repository")
 	noSplash = flag.Bool("no-splash", false, "Skip splash screen")
+	showVer  = flag.Bool("version", false, "Print version and exit")
+)
+
+// Build info, injected via -ldflags by goreleaser.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
 	flag.Parse()
+
+	if *showVer {
+		fmt.Printf("ichi %s (commit %s, built %s)\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	// 1. Initialize theme FIRST (Required by dado)
 	// Load saved theme from config, fallback to TokyoNightNight

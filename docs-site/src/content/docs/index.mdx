@@ -1,0 +1,68 @@
+---
+title: ichi
+description: A keyboard-driven Git client for the terminal — browse history, stage, commit, branch, and manage pull requests without leaving your shell.
+template: splash
+hero:
+  tagline: Your whole Git workflow, one keystroke away. A fast, vim-flavored Git TUI built in Go.
+  image:
+    html: '<img src="/images/views/graph.png" alt="The ichi commit graph rendered in the terminal" />'
+  actions:
+    - text: Get Started
+      link: /guides/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/atterpac/ichi
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## Why ichi?
+
+<CardGrid>
+  <Card title="Everything is a keystroke" icon="keyboard">
+    Browse the commit graph, stage hunks, commit, branch, stash, and sync —
+    all from the keyboard. No mouse, no context switch.
+  </Card>
+  <Card title="A live commit graph" icon="seti:git">
+    Open ichi on the graph view. Navigate history, inspect any commit's diff,
+    cherry-pick, revert, reset, and check out — right where you are.
+  </Card>
+  <Card title="GitHub built in" icon="github">
+    List, read, and review pull requests without leaving the terminal. Your
+    PR queue lives one keypress away.
+  </Card>
+  <Card title="A command palette for Git" icon="open-book">
+    Type <code>:push</code>, <code>:rebase</code>, <code>:merge</code> — or fuzzy-find
+    any action with <kbd>Ctrl</kbd>+<kbd>P</kbd>. Git verbs, no man pages.
+  </Card>
+</CardGrid>
+
+## A quick look
+
+```text
+  ● a1b2c3d  feat: add interactive staging        (HEAD -> main)
+  │
+  ● 9f8e7d6  fix: handle empty diff in blame view
+  │
+  ●─┐ 4c5b6a7  Merge branch 'feature/prs'
+  │ │
+  │ ● 2d3e4f5  feat: GitHub pull request list
+  │ │
+  ●─┘ 1a2b3c4  chore: bump dado to v0.4
+```
+
+Land on the graph, press <kbd>j</kbd>/<kbd>k</kbd> to move, <kbd>Enter</kbd> to inspect a
+commit, <kbd>d</kbd> for its diff, <kbd>s</kbd> to jump to status, <kbd>b</kbd> for branches.
+Press <kbd>:</kbd> any time to run a Git command.
+
+## Explore
+
+<CardGrid>
+  <LinkCard title="Introduction" href="/guides/introduction/" description="What ichi is and who it's for." />
+  <LinkCard title="Installation" href="/guides/installation/" description="Install ichi and open your first repo." />
+  <LinkCard title="Quick Start" href="/guides/quick-start/" description="Stage, commit, and push in under a minute." />
+  <LinkCard title="Keybindings & Commands" href="/guides/keybindings/" description="The full key map and command reference." />
+</CardGrid>

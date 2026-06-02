@@ -5,6 +5,7 @@ go 1.25.2
 require (
 	github.com/atterpac/dado v0.0.0
 	github.com/gdamore/tcell/v2 v2.13.4
+	golang.org/x/image v0.41.0
 )
 
 require (

@@ -200,10 +200,19 @@ func handleCheckout(ctx *Context, args []string) error {
 }
 
 func handleFetch(ctx *Context, args []string) error {
-	if err := ctx.Repo.FetchAll(); err != nil {
-		return fmt.Errorf("failed to fetch: %w", err)
-	}
-	app.ToastSuccess("Fetched from all remotes")
+	app.StartBusy("fetching...")
+	go func() {
+		err := ctx.Repo.FetchAll()
+		ctx.App.QueueUpdateDraw(func() {
+			app.StopBusy()
+			app.UpdateStatusBar(ctx.StatusBar, ctx.Repo)
+			if err != nil {
+				app.ToastError(fmt.Sprintf("Failed to fetch: %v", err))
+				return
+			}
+			app.ToastSuccess("Fetched from all remotes")
+		})
+	}()
 	return nil
 }
 
@@ -230,10 +239,19 @@ func handlePush(ctx *Context, args []string) error {
 }
 
 func handlePull(ctx *Context, args []string) error {
-	if err := ctx.Repo.Pull(); err != nil {
-		return fmt.Errorf("failed to pull: %w", err)
-	}
-	app.ToastSuccess("Pulled from remote")
+	app.StartBusy("pulling...")
+	go func() {
+		err := ctx.Repo.Pull()
+		ctx.App.QueueUpdateDraw(func() {
+			app.StopBusy()
+			app.UpdateStatusBar(ctx.StatusBar, ctx.Repo)
+			if err != nil {
+				app.ToastError(fmt.Sprintf("Failed to pull: %v", err))
+				return
+			}
+			app.ToastSuccess("Pulled from remote")
+		})
+	}()
 	return nil
 }
 

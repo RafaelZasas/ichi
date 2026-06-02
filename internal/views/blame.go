@@ -7,22 +7,22 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/git"
 )
 
 // BlameView displays line-by-line file attribution.
 type BlameView struct {
-	flex        *tview.Flex
+	flex        *core.Flex
 	split       *components.Split
-	blameTable  *tview.Table
-	detailView  *tview.TextView
+	blameTable  *core.Table
+	detailView  *core.TextView
 	repo        *git.Repository
 	app         *layout.App
 	file        string
@@ -51,9 +51,9 @@ func blameColors() []tcell.Color {
 // NewBlameView creates a new blame view for a file.
 func NewBlameView(app *layout.App, repo *git.Repository, file string) *BlameView {
 	v := &BlameView{
-		flex:        tview.NewFlex(),
-		blameTable:  tview.NewTable(),
-		detailView:  tview.NewTextView(),
+		flex:        core.NewFlex(),
+		blameTable:  core.NewTable(),
+		detailView:  core.NewTextView(),
 		repo:        repo,
 		app:         app,
 		file:        file,
@@ -78,13 +78,10 @@ func (v *BlameView) setup() {
 		Background(theme.Accent()).
 		Foreground(theme.Bg()))
 	v.blameTable.SetBackgroundColor(theme.Bg())
-	// Note: SetSelectionChangedFunc is set after data loads to avoid deadlock
-	theme.Register(v.blameTable)
 
 	// Configure detail view
 	v.detailView.SetDynamicColors(true).SetWordWrap(true)
 	v.detailView.SetBackgroundColor(theme.Bg())
-	theme.Register(v.detailView)
 
 	// Wrap in panels
 	blamePanel := components.NewPanel().
@@ -103,10 +100,9 @@ func (v *BlameView) setup() {
 		SetLeft(blamePanel).
 		SetRight(detailPanel)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(v.split, 0, 1, true)
-	theme.Register(v.flex)
 
 	// Register actions
 	v.actions = input.NewActionRegistry().
@@ -186,40 +182,39 @@ func (v *BlameView) renderBlame() {
 
 		// Create cells
 		// Hash cell
-		hashCell := tview.NewTableCell(line.ShortHash).
+		hashCell := core.NewTableCell(line.ShortHash).
 			SetTextColor(color).
-			SetAlign(tview.AlignLeft)
+			SetAlign(core.AlignLeft)
 		v.blameTable.SetCell(i, 0, hashCell)
 
 		// Author cell
-		authorCell := tview.NewTableCell(author).
+		authorCell := core.NewTableCell(author).
 			SetTextColor(color).
-			SetAlign(tview.AlignLeft)
+			SetAlign(core.AlignLeft)
 		v.blameTable.SetCell(i, 1, authorCell)
 
 		// Date cell
-		dateCell := tview.NewTableCell(date).
+		dateCell := core.NewTableCell(date).
 			SetTextColor(theme.FgMuted()).
-			SetAlign(tview.AlignLeft)
+			SetAlign(core.AlignLeft)
 		v.blameTable.SetCell(i, 2, dateCell)
 
 		// Line number cell (dimmed)
-		lineNumCell := tview.NewTableCell(lineNum).
+		lineNumCell := core.NewTableCell(lineNum).
 			SetTextColor(theme.FgMuted()).
-			SetAlign(tview.AlignRight)
+			SetAlign(core.AlignRight)
 		v.blameTable.SetCell(i, 3, lineNumCell)
 
 		// Separator
-		sepCell := tview.NewTableCell("│").
+		sepCell := core.NewTableCell("│").
 			SetTextColor(theme.FgMuted())
 		v.blameTable.SetCell(i, 4, sepCell)
 
 		// Content cell - escape and color based on commit
-		content := tview.Escape(line.Content)
-		// Show with subtle background tint for same-commit lines
-		contentCell := tview.NewTableCell(fmt.Sprintf("[%s]%s[-]", colorTag, content)).
+		content := strings.ReplaceAll(line.Content, "[", "[[]")
+		contentCell := core.NewTableCell(fmt.Sprintf("[%s]%s[-]", colorTag, content)).
 			SetExpansion(1).
-			SetAlign(tview.AlignLeft)
+			SetAlign(core.AlignLeft)
 		v.blameTable.SetCell(i, 5, contentCell)
 	}
 }
@@ -337,119 +332,110 @@ func (v *BlameView) showError(err error) {
 	v.detailView.SetText(fmt.Sprintf("[%s]Error:[-] %v", theme.TagError(), err))
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
 func (v *BlameView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
 func (v *BlameView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
 func (v *BlameView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
-func (v *BlameView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
 func (v *BlameView) Blur()                         { v.flex.Blur() }
 func (v *BlameView) HasFocus() bool                { return true }
 
-func (v *BlameView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
-
-func (v *BlameView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
-
-func (v *BlameView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if v.actions.Handle(event) {
-			return
-		}
-
-		if len(v.lines) == 0 {
-			return
-		}
-
-		row, col := v.blameTable.GetSelection()
-		oldRow := row
-
-		updateRow := func(newRow int) {
-			if newRow != oldRow {
-				v.blameTable.Select(newRow, col)
-				v.updateDetail(v.lines[newRow])
-			}
-		}
-
-		bindings := input.NewKeyBindings().
-			On(tcell.KeyDown, func(e *tcell.EventKey) bool {
-				if row < len(v.lines)-1 {
-					updateRow(row + 1)
-				}
-				return true
-			}).
-			On(tcell.KeyUp, func(e *tcell.EventKey) bool {
-				if row > 0 {
-					updateRow(row - 1)
-				}
-				return true
-			}).
-			On(tcell.KeyPgDn, func(e *tcell.EventKey) bool {
-				_, _, _, height := v.blameTable.GetInnerRect()
-				newRow := row + height/2
-				if newRow >= len(v.lines) {
-					newRow = len(v.lines) - 1
-				}
-				updateRow(newRow)
-				return true
-			}).
-			On(tcell.KeyCtrlD, func(e *tcell.EventKey) bool {
-				_, _, _, height := v.blameTable.GetInnerRect()
-				newRow := row + height/2
-				if newRow >= len(v.lines) {
-					newRow = len(v.lines) - 1
-				}
-				updateRow(newRow)
-				return true
-			}).
-			On(tcell.KeyPgUp, func(e *tcell.EventKey) bool {
-				_, _, _, height := v.blameTable.GetInnerRect()
-				newRow := row - height/2
-				if newRow < 0 {
-					newRow = 0
-				}
-				updateRow(newRow)
-				return true
-			}).
-			On(tcell.KeyCtrlU, func(e *tcell.EventKey) bool {
-				_, _, _, height := v.blameTable.GetInnerRect()
-				newRow := row - height/2
-				if newRow < 0 {
-					newRow = 0
-				}
-				updateRow(newRow)
-				return true
-			}).
-			On(tcell.KeyHome, func(e *tcell.EventKey) bool {
-				updateRow(0)
-				return true
-			}).
-			On(tcell.KeyEnd, func(e *tcell.EventKey) bool {
-				updateRow(len(v.lines) - 1)
-				return true
-			}).
-			OnRune('j', func(e *tcell.EventKey) bool {
-				if row < len(v.lines)-1 {
-					updateRow(row + 1)
-				}
-				return true
-			}).
-			OnRune('k', func(e *tcell.EventKey) bool {
-				if row > 0 {
-					updateRow(row - 1)
-				}
-				return true
-			}).
-			OnRune('g', func(e *tcell.EventKey) bool {
-				updateRow(0)
-				return true
-			}).
-			OnRune('G', func(e *tcell.EventKey) bool {
-				updateRow(len(v.lines) - 1)
-				return true
-			})
-
-		bindings.Handle(event)
+func (v *BlameView) HandleKey(event *tcell.EventKey) bool {
+	if v.actions.Handle(event) {
+		return true
 	}
+
+	if len(v.lines) == 0 {
+		return false
+	}
+
+	row, col := v.blameTable.GetSelection()
+	oldRow := row
+
+	updateRow := func(newRow int) {
+		if newRow != oldRow {
+			v.blameTable.Select(newRow, col)
+			v.updateDetail(v.lines[newRow])
+		}
+	}
+
+	bindings := input.NewKeyBindings().
+		On(tcell.KeyDown, func(e *tcell.EventKey) bool {
+			if row < len(v.lines)-1 {
+				updateRow(row + 1)
+			}
+			return true
+		}).
+		On(tcell.KeyUp, func(e *tcell.EventKey) bool {
+			if row > 0 {
+				updateRow(row - 1)
+			}
+			return true
+		}).
+		On(tcell.KeyPgDn, func(e *tcell.EventKey) bool {
+			_, _, _, height := v.blameTable.GetInnerRect()
+			newRow := row + height/2
+			if newRow >= len(v.lines) {
+				newRow = len(v.lines) - 1
+			}
+			updateRow(newRow)
+			return true
+		}).
+		On(tcell.KeyCtrlD, func(e *tcell.EventKey) bool {
+			_, _, _, height := v.blameTable.GetInnerRect()
+			newRow := row + height/2
+			if newRow >= len(v.lines) {
+				newRow = len(v.lines) - 1
+			}
+			updateRow(newRow)
+			return true
+		}).
+		On(tcell.KeyPgUp, func(e *tcell.EventKey) bool {
+			_, _, _, height := v.blameTable.GetInnerRect()
+			newRow := row - height/2
+			if newRow < 0 {
+				newRow = 0
+			}
+			updateRow(newRow)
+			return true
+		}).
+		On(tcell.KeyCtrlU, func(e *tcell.EventKey) bool {
+			_, _, _, height := v.blameTable.GetInnerRect()
+			newRow := row - height/2
+			if newRow < 0 {
+				newRow = 0
+			}
+			updateRow(newRow)
+			return true
+		}).
+		On(tcell.KeyHome, func(e *tcell.EventKey) bool {
+			updateRow(0)
+			return true
+		}).
+		On(tcell.KeyEnd, func(e *tcell.EventKey) bool {
+			updateRow(len(v.lines) - 1)
+			return true
+		}).
+		OnRune('j', func(e *tcell.EventKey) bool {
+			if row < len(v.lines)-1 {
+				updateRow(row + 1)
+			}
+			return true
+		}).
+		OnRune('k', func(e *tcell.EventKey) bool {
+			if row > 0 {
+				updateRow(row - 1)
+			}
+			return true
+		}).
+		OnRune('g', func(e *tcell.EventKey) bool {
+			updateRow(0)
+			return true
+		}).
+		OnRune('G', func(e *tcell.EventKey) bool {
+			updateRow(len(v.lines) - 1)
+			return true
+		})
+
+	return bindings.Handle(event)
 }

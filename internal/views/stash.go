@@ -5,13 +5,13 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/binding"
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/binding"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
@@ -20,7 +20,7 @@ import (
 
 // StashView displays the stash list.
 type StashView struct {
-	flex    *tview.Flex
+	flex    *core.Flex
 	table   *components.Table
 	repo    *git.Repository
 	app     *layout.App
@@ -31,7 +31,7 @@ type StashView struct {
 // NewStashView creates a new stash view.
 func NewStashView(app *layout.App, repo *git.Repository) *StashView {
 	v := &StashView{
-		flex:  tview.NewFlex(),
+		flex:  core.NewFlex(),
 		table: components.NewTable(),
 		repo:  repo,
 		app:   app,
@@ -48,10 +48,9 @@ func (v *StashView) setup() {
 		SetTitle("Stash List").
 		SetContent(v.table)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(panel, 0, 1, true)
-	theme.Register(v.flex)
 
 	// Setup binding
 	v.binding = binding.NewTableBinding[git.Stash](v.table).
@@ -228,69 +227,54 @@ func (v *StashView) createBranch() {
 		})
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
-func (v *StashView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *StashView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *StashView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *StashView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
-func (v *StashView) Blur()                          { v.flex.Blur() }
-func (v *StashView) HasFocus() bool                 { return v.flex.HasFocus() }
+func (v *StashView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *StashView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *StashView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *StashView) Blur()                         { v.flex.Blur() }
+func (v *StashView) HasFocus() bool                { return v.flex.HasFocus() }
 
-func (v *StashView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
+func (v *StashView) HandleKey(event *tcell.EventKey) bool {
+	if v.actions.Handle(event) {
+		return true
+	}
 
-func (v *StashView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	row, col := v.table.GetSelection()
 
-func (v *StashView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if v.actions.Handle(event) {
-			return
-		}
+	bindings := input.NewKeyBindings().
+		On(tcell.KeyDown, func(e *tcell.EventKey) bool {
+			if row < v.table.GetRowCount()-1 {
+				v.table.Select(row+1, col)
+			}
+			return true
+		}).
+		On(tcell.KeyUp, func(e *tcell.EventKey) bool {
+			if row > 1 {
+				v.table.Select(row-1, col)
+			}
+			return true
+		}).
+		OnRune('j', func(e *tcell.EventKey) bool {
+			if row < v.table.GetRowCount()-1 {
+				v.table.Select(row+1, col)
+			}
+			return true
+		}).
+		OnRune('k', func(e *tcell.EventKey) bool {
+			if row > 1 {
+				v.table.Select(row-1, col)
+			}
+			return true
+		})
 
-		row, col := v.table.GetSelection()
-
-		bindings := input.NewKeyBindings().
-			On(tcell.KeyDown, func(e *tcell.EventKey) bool {
-				if row < v.table.GetRowCount()-1 {
-					v.table.Select(row+1, col)
-				}
-				return true
-			}).
-			On(tcell.KeyUp, func(e *tcell.EventKey) bool {
-				if row > 1 {
-					v.table.Select(row-1, col)
-				}
-				return true
-			}).
-			OnRune('j', func(e *tcell.EventKey) bool {
-				if row < v.table.GetRowCount()-1 {
-					v.table.Select(row+1, col)
-				}
-				return true
-			}).
-			OnRune('k', func(e *tcell.EventKey) bool {
-				if row > 1 {
-					v.table.Select(row-1, col)
-				}
-				return true
-			})
-
-		if bindings.Handle(event) {
-			return
-		}
-
-		if handler := v.flex.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	return bindings.Handle(event)
 }
 
 // StashDiffView displays a stash diff.
 type StashDiffView struct {
-	flex     *tview.Flex
-	diffView *tview.TextView
+	flex     *core.Flex
+	diffView *core.TextView
 	app      *layout.App
 	index    int
 	content  []string
@@ -299,8 +283,8 @@ type StashDiffView struct {
 // NewStashDiffView creates a diff view for a stash.
 func NewStashDiffView(app *layout.App, index int, diff string) *StashDiffView {
 	v := &StashDiffView{
-		flex:     tview.NewFlex(),
-		diffView: tview.NewTextView(),
+		flex:     core.NewFlex(),
+		diffView: core.NewTextView(),
 		app:      app,
 		index:    index,
 	}
@@ -309,16 +293,14 @@ func NewStashDiffView(app *layout.App, index int, diff string) *StashDiffView {
 	v.diffView.SetWordWrap(false)
 	v.diffView.SetScrollable(true)
 	v.diffView.SetBackgroundColor(theme.Bg())
-	theme.Register(v.diffView)
 
 	panel := components.NewPanel().
 		SetTitle(fmt.Sprintf("Stash Diff: stash@{%d}", index)).
 		SetContent(v.diffView)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(panel, 0, 1, true)
-	theme.Register(v.flex)
 
 	// Render diff
 	v.renderDiff(diff)
@@ -331,20 +313,21 @@ func (v *StashDiffView) renderDiff(diff string) {
 
 	for _, line := range strings.Split(diff, "\n") {
 		v.content = append(v.content, line)
+		escaped := strings.ReplaceAll(line, "[", "[[]")
 
 		switch {
 		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
-			sb.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagFgDim(), tview.Escape(line)))
+			sb.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagFgDim(), escaped))
 		case strings.HasPrefix(line, "@@"):
-			sb.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), tview.Escape(line)))
+			sb.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), escaped))
 		case strings.HasPrefix(line, "+"):
-			sb.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), tview.Escape(line)))
+			sb.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), escaped))
 		case strings.HasPrefix(line, "-"):
-			sb.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), tview.Escape(line)))
+			sb.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), escaped))
 		case strings.HasPrefix(line, "diff --git"):
-			sb.WriteString(fmt.Sprintf("\n[%s::b]%s[-:-:-]\n", theme.TagAccent(), tview.Escape(line)))
+			sb.WriteString(fmt.Sprintf("\n[%s::b]%s[-:-:-]\n", theme.TagAccent(), escaped))
 		default:
-			sb.WriteString(tview.Escape(line) + "\n")
+			sb.WriteString(escaped + "\n")
 		}
 	}
 
@@ -366,59 +349,44 @@ func (v *StashDiffView) Hints() []components.KeyHint {
 	}
 }
 
-func (v *StashDiffView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *StashDiffView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *StashDiffView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *StashDiffView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
-func (v *StashDiffView) Blur()                          { v.flex.Blur() }
-func (v *StashDiffView) HasFocus() bool                 { return v.flex.HasFocus() }
+func (v *StashDiffView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *StashDiffView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *StashDiffView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *StashDiffView) Blur()                         { v.flex.Blur() }
+func (v *StashDiffView) HasFocus() bool                { return v.flex.HasFocus() }
 
-func (v *StashDiffView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
+func (v *StashDiffView) HandleKey(event *tcell.EventKey) bool {
+	row, col := v.diffView.GetScrollOffset()
 
-func (v *StashDiffView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	bindings := input.NewKeyBindings().
+		On(tcell.KeyDown, func(e *tcell.EventKey) bool {
+			v.diffView.ScrollTo(row+1, col)
+			return true
+		}).
+		On(tcell.KeyUp, func(e *tcell.EventKey) bool {
+			if row > 0 {
+				v.diffView.ScrollTo(row-1, col)
+			}
+			return true
+		}).
+		OnRune('j', func(e *tcell.EventKey) bool {
+			v.diffView.ScrollTo(row+1, col)
+			return true
+		}).
+		OnRune('k', func(e *tcell.EventKey) bool {
+			if row > 0 {
+				v.diffView.ScrollTo(row-1, col)
+			}
+			return true
+		}).
+		OnRune('g', func(e *tcell.EventKey) bool {
+			v.diffView.ScrollTo(0, col)
+			return true
+		}).
+		OnRune('G', func(e *tcell.EventKey) bool {
+			v.diffView.ScrollTo(len(v.content), col)
+			return true
+		})
 
-func (v *StashDiffView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		row, col := v.diffView.GetScrollOffset()
-
-		bindings := input.NewKeyBindings().
-			On(tcell.KeyDown, func(e *tcell.EventKey) bool {
-				v.diffView.ScrollTo(row+1, col)
-				return true
-			}).
-			On(tcell.KeyUp, func(e *tcell.EventKey) bool {
-				if row > 0 {
-					v.diffView.ScrollTo(row-1, col)
-				}
-				return true
-			}).
-			OnRune('j', func(e *tcell.EventKey) bool {
-				v.diffView.ScrollTo(row+1, col)
-				return true
-			}).
-			OnRune('k', func(e *tcell.EventKey) bool {
-				if row > 0 {
-					v.diffView.ScrollTo(row-1, col)
-				}
-				return true
-			}).
-			OnRune('g', func(e *tcell.EventKey) bool {
-				v.diffView.ScrollTo(0, col)
-				return true
-			}).
-			OnRune('G', func(e *tcell.EventKey) bool {
-				v.diffView.ScrollTo(len(v.content), col)
-				return true
-			})
-
-		if bindings.Handle(event) {
-			return
-		}
-
-		if handler := v.flex.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	return bindings.Handle(event)
 }

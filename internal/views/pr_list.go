@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/git"
 	"github.com/atterpac/gxt/internal/remote"
@@ -21,25 +21,24 @@ import (
 
 // PRListView displays a list of pull requests
 type PRListView struct {
-	*tview.Box
+	core.Box
 	split      *components.Split
 	prTree     *components.Tree
-	detailText *tview.TextView
+	detailText *core.TextView
 	app        *layout.App
 	repo       *git.Repository
 
-	provider   remote.Provider
-	repoPath   string // owner/repo
-	prs        []remote.PullRequest
+	provider    remote.Provider
+	repoPath    string // owner/repo
+	prs         []remote.PullRequest
 	stateFilter remote.PRState
 }
 
 // NewPRListView creates a new PR list view
 func NewPRListView(app *layout.App, repo *git.Repository) *PRListView {
 	v := &PRListView{
-		Box:         tview.NewBox(),
 		prTree:      components.NewTree(),
-		detailText:  tview.NewTextView(),
+		detailText:  core.NewTextView(),
 		app:         app,
 		repo:        repo,
 		stateFilter: remote.PROpen,
@@ -50,13 +49,11 @@ func NewPRListView(app *layout.App, repo *git.Repository) *PRListView {
 
 func (v *PRListView) setup() {
 	v.Box.SetBackgroundColor(theme.Bg())
-	theme.Register(v.Box)
 
 	// Configure detail text view
 	v.detailText.SetDynamicColors(true)
 	v.detailText.SetWordWrap(true)
 	v.detailText.SetBackgroundColor(theme.Bg())
-	theme.Register(v.detailText)
 
 	// Configure tree
 	v.prTree.SetShowLines(false).
@@ -229,7 +226,8 @@ func (v *PRListView) renderPRDetail(pr *remote.PullRequest) {
 	var text strings.Builder
 
 	// Title
-	text.WriteString(fmt.Sprintf("[%s::b]#%d %s[-:-:-]\n\n", theme.TagAccent(), pr.Number, tview.Escape(pr.Title)))
+	escaped := strings.ReplaceAll(pr.Title, "[", "[[]")
+	text.WriteString(fmt.Sprintf("[%s::b]#%d %s[-:-:-]\n\n", theme.TagAccent(), pr.Number, escaped))
 
 	// State and author
 	stateColor := theme.TagSuccess()
@@ -291,11 +289,11 @@ func (v *PRListView) renderPRDetail(pr *remote.PullRequest) {
 		if len(body) > 500 {
 			body = body[:500] + "..."
 		}
-		text.WriteString(tview.Escape(body))
+		text.WriteString(strings.ReplaceAll(body, "[", "[[]"))
 	}
 
 	v.detailText.SetText(text.String())
-	v.detailText.ScrollToBeginning()
+	v.detailText.ScrollTo(0, 0)
 }
 
 func (v *PRListView) openPRView(pr *remote.PullRequest) {
@@ -355,7 +353,7 @@ func (v *PRListView) cycleStateFilter() {
 
 // Draw renders the view
 func (v *PRListView) Draw(screen tcell.Screen) {
-	v.Box.DrawForSubclass(screen, v)
+	v.Box.DrawForSubclass(screen)
 	x, y, width, height := v.GetInnerRect()
 
 	if width <= 0 || height <= 0 {
@@ -366,58 +364,42 @@ func (v *PRListView) Draw(screen tcell.Screen) {
 	v.split.Draw(screen)
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
 func (v *PRListView) GetRect() (int, int, int, int) { return v.Box.GetRect() }
 func (v *PRListView) SetRect(x, y, w, h int)        { v.Box.SetRect(x, y, w, h) }
-func (v *PRListView) Focus(d func(tview.Primitive)) { v.Box.Focus(d) }
 func (v *PRListView) Blur()                         { v.Box.Blur() }
 func (v *PRListView) HasFocus() bool                { return v.Box.HasFocus() }
 
-func (v *PRListView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.Box.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
-		if handler := v.split.MouseHandler(); handler != nil {
-			return handler(action, event, setFocus)
-		}
-		return false, nil
-	})
-}
+func (v *PRListView) HandleKey(event *tcell.EventKey) bool {
+	if event.Key() == tcell.KeyEscape {
+		v.app.Pages().Pop()
+		return true
+	}
 
-func (v *PRListView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
-
-func (v *PRListView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.Box.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if event.Key() == tcell.KeyEscape {
+	switch event.Key() {
+	case tcell.KeyRune:
+		switch event.Rune() {
+		case 'c':
+			v.checkoutPR()
+			return true
+		case 'o':
+			v.openInBrowser()
+			return true
+		case 'f':
+			v.cycleStateFilter()
+			return true
+		case 'r':
+			v.loadPRs()
+			return true
+		case 'q':
 			v.app.Pages().Pop()
-			return
+			return true
 		}
+	}
 
-		switch event.Key() {
-		case tcell.KeyRune:
-			switch event.Rune() {
-			case 'c':
-				v.checkoutPR()
-				return
-			case 'o':
-				v.openInBrowser()
-				return
-			case 'f':
-				v.cycleStateFilter()
-				return
-			case 'r':
-				v.loadPRs()
-				return
-			case 'q':
-				v.app.Pages().Pop()
-				return
-			}
-		}
-
-		// Pass to tree for navigation
-		if handler := v.prTree.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	// Pass to tree for navigation
+	return v.prTree.HandleKey(event)
 }
 
 // Helper functions

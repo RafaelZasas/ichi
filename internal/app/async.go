@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/atterpac/jig/async"
+	"github.com/atterpac/dado/async"
 )
 
 // RunAsync executes a function asynchronously with toast feedback.

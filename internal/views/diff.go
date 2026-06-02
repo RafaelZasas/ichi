@@ -4,18 +4,18 @@ import (
 	"fmt"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/git"
 )
 
-// DiffView displays a commit diff using jig's DiffViewer.
+// DiffView displays a commit diff using dado's DiffViewer.
 type DiffView struct {
-	flex       *tview.Flex
+	flex       *core.Flex
 	diffViewer *components.DiffViewer
 	repo       *git.Repository
 	app        *layout.App
@@ -25,7 +25,7 @@ type DiffView struct {
 // NewDiffView creates a new diff view for a commit.
 func NewDiffView(app *layout.App, repo *git.Repository, hash string) *DiffView {
 	v := &DiffView{
-		flex:       tview.NewFlex(),
+		flex:       core.NewFlex(),
 		diffViewer: components.NewDiffViewer(),
 		repo:       repo,
 		app:        app,
@@ -51,10 +51,9 @@ func (v *DiffView) setup() {
 		SetTitle(title).
 		SetContent(v.diffViewer)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(panel, 0, 1, true)
-	theme.Register(v.flex)
 }
 
 // nav.Component interface
@@ -89,32 +88,47 @@ func (v *DiffView) loadDiff() {
 }
 
 func (v *DiffView) showError(err error) {
-	// Create an error diff result
 	v.diffViewer.SetUnifiedDiff(fmt.Sprintf("Error: %v", err))
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
-func (v *DiffView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *DiffView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *DiffView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *DiffView) Focus(d func(tview.Primitive)) { d(v.diffViewer) }
-func (v *DiffView) Blur()                          { v.diffViewer.Blur() }
-func (v *DiffView) HasFocus() bool                 { return v.diffViewer.HasFocus() }
+func (v *DiffView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *DiffView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *DiffView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *DiffView) Blur()                         { v.diffViewer.Blur() }
+func (v *DiffView) HasFocus() bool                { return v.diffViewer.HasFocus() }
 
-func (v *DiffView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.diffViewer.MouseHandler()
-}
-
-func (v *DiffView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
-
-func (v *DiffView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		// Delegate to diffViewer's input handler
-		if handler := v.diffViewer.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+func (v *DiffView) HandleKey(ev *tcell.EventKey) bool {
+	switch ev.Rune() {
+	case 'j':
+		v.diffViewer.NextChange()
+		return true
+	case 'k':
+		v.diffViewer.PrevChange()
+		return true
+	case 'n':
+		v.diffViewer.NextChange()
+		return true
+	case 'N':
+		v.diffViewer.PrevChange()
+		return true
+	case 'J':
+		v.diffViewer.NextHunk()
+		return true
+	case 'K':
+		v.diffViewer.PrevHunk()
+		return true
+	}
+	switch ev.Key() {
+	case tcell.KeyDown:
+		v.diffViewer.NextChange()
+		return true
+	case tcell.KeyUp:
+		v.diffViewer.PrevChange()
+		return true
+	}
+	return false
 }
 
 // FileDiffView displays a diff for a single file.

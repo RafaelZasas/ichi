@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/git"
 )

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/atterpac/jig/validators"
+	"github.com/atterpac/dado/validators"
 )
 
 // Git-specific validators

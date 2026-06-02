@@ -1,7 +1,7 @@
 package selection
 
 import (
-	"github.com/atterpac/jig/components"
+	"github.com/atterpac/dado/components"
 
 	"github.com/atterpac/gxt/internal/git"
 )

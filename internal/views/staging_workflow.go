@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
@@ -24,22 +24,24 @@ type nodeData struct {
 	hunk      *git.DiffHunk
 	hunkIndex int
 	isFile    bool
+	isDir     bool
+	dirPath   string
 	isStaged  bool
 }
 
 // StagingWorkflowView provides a tinder-style hunk review workflow.
 type StagingWorkflowView struct {
-	*tview.Box
-	mainSplit      *components.Split
-	leftSplit      *components.Split
-	unstagedTree   *components.Tree
-	stagedTree     *components.Tree
-	previewText    *tview.TextView
-	unstagedPanel  *components.Panel
-	stagedPanel    *components.Panel
-	previewPanel   *components.Panel
-	repo           *git.Repository
-	app            *layout.App
+	core.Box
+	mainSplit     *components.Split
+	leftSplit     *components.Split
+	unstagedTree  *components.Tree
+	stagedTree    *components.Tree
+	previewText   *core.TextView
+	unstagedPanel *components.Panel
+	stagedPanel   *components.Panel
+	previewPanel  *components.Panel
+	repo          *git.Repository
+	app           *layout.App
 
 	unstagedFiles []git.StatusEntry          // Unstaged/untracked files
 	stagedFiles   []git.StatusEntry          // Staged files
@@ -51,8 +53,7 @@ type StagingWorkflowView struct {
 // NewStagingWorkflowView creates a new staging workflow view.
 func NewStagingWorkflowView(app *layout.App, repo *git.Repository) *StagingWorkflowView {
 	v := &StagingWorkflowView{
-		Box:          tview.NewBox(),
-		previewText:  tview.NewTextView(),
+		previewText:  core.NewTextView(),
 		unstagedTree: components.NewTree(),
 		stagedTree:   components.NewTree(),
 		repo:         repo,
@@ -66,14 +67,12 @@ func NewStagingWorkflowView(app *layout.App, repo *git.Repository) *StagingWorkf
 
 func (v *StagingWorkflowView) setup() {
 	v.Box.SetBackgroundColor(theme.Bg())
-	theme.Register(v.Box)
 
 	// Configure preview text view
 	v.previewText.SetDynamicColors(true)
 	v.previewText.SetWordWrap(false)
 	v.previewText.SetBackgroundColor(theme.Bg())
 	v.previewText.SetScrollable(true)
-	theme.Register(v.previewText)
 
 	// Configure unstaged tree
 	v.unstagedTree.SetShowLines(true).
@@ -187,34 +186,12 @@ func (v *StagingWorkflowView) loadFiles() {
 
 func (v *StagingWorkflowView) buildTrees() {
 	// Build unstaged tree
-	unstagedRoot := &components.TreeNode{
-		ID:       "unstaged-root",
-		Label:    "Unstaged",
-		Expanded: true,
-	}
-
-	for i := range v.unstagedFiles {
-		entry := &v.unstagedFiles[i]
-		fileNode := v.buildFileNode(entry, false)
-		unstagedRoot.AddChild(fileNode)
-	}
-
+	unstagedRoot := v.buildTree(v.unstagedFiles, false, "unstaged-root", "Unstaged")
 	v.unstagedTree.SetRoot(unstagedRoot)
 	v.unstagedTree.ExpandAll()
 
 	// Build staged tree
-	stagedRoot := &components.TreeNode{
-		ID:       "staged-root",
-		Label:    "Staged",
-		Expanded: true,
-	}
-
-	for i := range v.stagedFiles {
-		entry := &v.stagedFiles[i]
-		fileNode := v.buildFileNode(entry, true)
-		stagedRoot.AddChild(fileNode)
-	}
-
+	stagedRoot := v.buildTree(v.stagedFiles, true, "staged-root", "Staged")
 	v.stagedTree.SetRoot(stagedRoot)
 	v.stagedTree.ExpandAll()
 
@@ -228,6 +205,65 @@ func (v *StagingWorkflowView) buildTrees() {
 			v.onNodeHighlight(node)
 		}
 	}
+}
+
+// buildTree builds a directory-grouped tree of the given files. Files in the
+// same directory are nested under a shared directory node, so a whole folder
+// can be staged at once.
+func (v *StagingWorkflowView) buildTree(files []git.StatusEntry, isStaged bool, rootID, rootLabel string) *components.TreeNode {
+	root := &components.TreeNode{
+		ID:       rootID,
+		Label:    rootLabel,
+		Expanded: true,
+	}
+
+	keyPrefix := ""
+	if isStaged {
+		keyPrefix = "staged:"
+	}
+
+	dirNodes := map[string]*components.TreeNode{"": root}
+
+	for i := range files {
+		entry := &files[i]
+		dir := filepath.Dir(entry.Path)
+		if dir == "." {
+			dir = ""
+		}
+		parent := v.ensureDirNode(root, dirNodes, dir, keyPrefix, isStaged)
+		parent.AddChild(v.buildFileNode(entry, isStaged))
+	}
+
+	return root
+}
+
+// ensureDirNode returns the tree node for dir, creating it (and any missing
+// ancestor directory nodes) on demand.
+func (v *StagingWorkflowView) ensureDirNode(root *components.TreeNode, dirNodes map[string]*components.TreeNode, dir, keyPrefix string, isStaged bool) *components.TreeNode {
+	if node, ok := dirNodes[dir]; ok {
+		return node
+	}
+
+	parentDir := filepath.Dir(dir)
+	if parentDir == "." || parentDir == dir {
+		parentDir = ""
+	}
+	parent := v.ensureDirNode(root, dirNodes, parentDir, keyPrefix, isStaged)
+
+	node := &components.TreeNode{
+		ID:       keyPrefix + "dir:" + dir,
+		Label:    filepath.Base(dir),
+		Icon:     "/",
+		Expanded: true,
+		Data: &nodeData{
+			isDir:    true,
+			dirPath:  dir,
+			isStaged: isStaged,
+		},
+	}
+	parent.AddChild(node)
+	dirNodes[dir] = node
+	return node
 }
 
 func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged bool) *components.TreeNode {
@@ -276,10 +312,12 @@ func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged boo
 	}
 	v.fileHunks[key] = hunks
 
-	// Create file node
-	label := fmt.Sprintf("%s %s", icon, entry.Path)
+	// Create file node. The directory is conveyed by the tree hierarchy, so
+	// the label only needs the file's base name.
+	name := filepath.Base(entry.Path)
+	label := fmt.Sprintf("%s %s", icon, name)
 	if len(hunks) > 1 {
-		label = fmt.Sprintf("%s %s (%d hunks)", icon, entry.Path, len(hunks))
+		label = fmt.Sprintf("%s %s (%d hunks)", icon, name, len(hunks))
 	}
 
 	fileNode := &components.TreeNode{
@@ -327,6 +365,17 @@ func (v *StagingWorkflowView) updateFocusState() {
 	v.unstagedPanel.SetFocused(v.focusPanel == 0)
 	v.stagedPanel.SetFocused(v.focusPanel == 1)
 	v.previewPanel.SetFocused(v.focusPanel == 2)
+
+	// Grow the focused tree and collapse the unfocused one so the active
+	// section has room. Preview focus keeps the two trees balanced.
+	switch v.focusPanel {
+	case 0:
+		v.leftSplit.SetRatio(0.85) // unstaged grows, staged collapses
+	case 1:
+		v.leftSplit.SetRatio(0.15) // staged grows, unstaged collapses
+	default:
+		v.leftSplit.SetRatio(0.5)
+	}
 }
 
 func (v *StagingWorkflowView) statusIcon(entry *git.StatusEntry) string {
@@ -357,13 +406,34 @@ func (v *StagingWorkflowView) onNodeHighlight(node *components.TreeNode) {
 		return
 	}
 
-	if data.isFile {
+	if data.isDir {
+		v.renderDirPreview(node, data.dirPath)
+	} else if data.isFile {
 		// Show file overview
 		v.renderFilePreview(data.file, data.isStaged)
 	} else {
 		// Show specific hunk
 		v.renderHunkPreview(data.file, data.hunk, data.hunkIndex, data.isStaged)
 	}
+}
+
+// renderDirPreview shows a summary of the files contained in a directory node.
+func (v *StagingWorkflowView) renderDirPreview(node *components.TreeNode, dirPath string) {
+	files := collectFileData(node)
+
+	var text strings.Builder
+	label := dirPath
+	if label == "" {
+		label = "."
+	}
+	text.WriteString(fmt.Sprintf("[%s::b]%s/[-:-:-]\n\n", theme.TagAccent(), label))
+	text.WriteString(fmt.Sprintf("[%s]%d file(s)[-]\n\n", theme.TagFgDim(), len(files)))
+	for _, fd := range files {
+		text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFgDim(), fd.file.Path))
+	}
+
+	v.previewText.SetText(text.String())
+	v.previewText.ScrollTo(0, 0)
 }
 
 func (v *StagingWorkflowView) onNodeSelect(node *components.TreeNode) {
@@ -390,7 +460,8 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged
 					text.WriteString(fmt.Sprintf("\n[%s]... +%d more lines[-]", theme.TagFgDim(), len(lines)-maxLines))
 					break
 				}
-				text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), tview.Escape(line)))
+				escaped := strings.ReplaceAll(line, "[", "[[]")
+				text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
 			}
 		}
 	} else {
@@ -412,20 +483,21 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged
 			}
 			text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), hunk.Header))
 			for _, line := range hunk.Lines {
+				escaped := strings.ReplaceAll(line.Content, "[", "[[]")
 				switch line.Type {
 				case git.LineAdded:
-					text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), tview.Escape(line.Content)))
+					text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
 				case git.LineRemoved:
-					text.WriteString(fmt.Sprintf("[%s]-%s[-]\n", theme.TagError(), tview.Escape(line.Content)))
+					text.WriteString(fmt.Sprintf("[%s]-%s[-]\n", theme.TagError(), escaped))
 				default:
-					text.WriteString(fmt.Sprintf(" %s\n", tview.Escape(line.Content)))
+					text.WriteString(fmt.Sprintf(" %s\n", escaped))
 				}
 			}
 		}
 	}
 
 	v.previewText.SetText(text.String())
-	v.previewText.ScrollToBeginning()
+	v.previewText.ScrollTo(0, 0)
 }
 
 func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *git.DiffHunk, hunkIndex int, isStaged bool) {
@@ -442,20 +514,21 @@ func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *gi
 	text.WriteString(fmt.Sprintf("[%s]%s[-]\n\n", theme.TagInfo(), hunk.Header))
 
 	for _, line := range hunk.Lines {
+		escaped := strings.ReplaceAll(line.Content, "[", "[[]")
 		switch line.Type {
 		case git.LineAdded:
-			text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), tview.Escape(line.Content)))
+			text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
 		case git.LineRemoved:
-			text.WriteString(fmt.Sprintf("[%s]-%s[-]\n", theme.TagError(), tview.Escape(line.Content)))
+			text.WriteString(fmt.Sprintf("[%s]-%s[-]\n", theme.TagError(), escaped))
 		default:
-			text.WriteString(fmt.Sprintf(" %s\n", tview.Escape(line.Content)))
+			text.WriteString(fmt.Sprintf(" %s\n", escaped))
 		}
 	}
 
 	text.WriteString(fmt.Sprintf("\n[%s]Space: Stage  d: Discard  e: Edit[-]", theme.TagFgDim()))
 
 	v.previewText.SetText(text.String())
-	v.previewText.ScrollToBeginning()
+	v.previewText.ScrollTo(0, 0)
 }
 
 func (v *StagingWorkflowView) stageSelected() {
@@ -487,7 +560,25 @@ func (v *StagingWorkflowView) stageSelected() {
 	// Remember cursor position to restore after reload
 	savedIndex := tree.GetSelectedIndex()
 
-	if isUnstaging {
+	if data.isDir {
+		// Stage/unstage every file under the directory.
+		for _, fd := range collectFileData(node) {
+			var err error
+			if isUnstaging {
+				err = v.repo.UnstageFile(fd.file.Path)
+			} else {
+				err = v.repo.StageFile(fd.file.Path)
+			}
+			if err != nil {
+				verb := "Stage"
+				if isUnstaging {
+					verb = "Unstage"
+				}
+				ShowErrorModal(v.app, verb+" Failed", err.Error())
+				return
+			}
+		}
+	} else if isUnstaging {
 		// Unstage operation
 		if data.isFile {
 			// Unstage entire file
@@ -561,15 +652,13 @@ func (v *StagingWorkflowView) discardSelected() {
 	ShowConfirmModal(v.app, "Discard Changes",
 		"Discard selected changes? This cannot be undone.",
 		func() {
-			if data.isFile {
-				if data.file.IsUntracked {
-					// Delete untracked file
-					fullPath := filepath.Join(v.repo.Path(), data.file.Path)
-					os.Remove(fullPath)
-				} else {
-					// Discard all changes to file
-					v.repo.DiscardFileChanges(data.file.Path)
+			if data.isDir {
+				// Discard every file under the directory.
+				for _, fd := range collectFileData(node) {
+					v.discardFile(fd.file)
 				}
+			} else if data.isFile {
+				v.discardFile(data.file)
 			} else {
 				if data.file.IsUntracked {
 					// Delete untracked file
@@ -583,6 +672,27 @@ func (v *StagingWorkflowView) discardSelected() {
 			v.loadFiles()
 			tree.SetSelectedIndex(savedIndex)
 		})
+}
+
+// discardFile discards all changes to a single file (deleting it if untracked).
+func (v *StagingWorkflowView) discardFile(entry *git.StatusEntry) {
+	if entry.IsUntracked {
+		os.Remove(filepath.Join(v.repo.Path(), entry.Path))
+		return
+	}
+	v.repo.DiscardFileChanges(entry.Path)
+}
+
+// collectFileData returns the nodeData of every file node at or under node.
+func collectFileData(node *components.TreeNode) []*nodeData {
+	var out []*nodeData
+	if d, ok := node.Data.(*nodeData); ok && d.isFile {
+		out = append(out, d)
+	}
+	for _, c := range node.Children {
+		out = append(out, collectFileData(c)...)
+	}
+	return out
 }
 
 func (v *StagingWorkflowView) editSelected() {
@@ -601,126 +711,32 @@ func (v *StagingWorkflowView) editSelected() {
 	}
 
 	data, ok := node.Data.(*nodeData)
-	if !ok {
+	if !ok || data.isDir {
+		// Directories have no single file to edit.
 		return
 	}
 
-	if data.isFile {
-		// Open file directly in editor
-		fullPath := filepath.Join(v.repo.Path(), data.file.Path)
-		v.openInEditor(fullPath)
-		v.loadFiles()
-		return
-	}
-
-	// For hunks, write to a .patch file so editor shows diff colors
-	if data.hunk != nil {
-		v.editHunkAsPatch(data.file, data.hunk)
-	}
-}
-
-func (v *StagingWorkflowView) editHunkAsPatch(entry *git.StatusEntry, hunk *git.DiffHunk) {
-	// Build patch content with header for syntax highlighting
-	var content strings.Builder
-	content.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", entry.Path, entry.Path))
-	content.WriteString(fmt.Sprintf("--- a/%s\n", entry.Path))
-	content.WriteString(fmt.Sprintf("+++ b/%s\n", entry.Path))
-	content.WriteString(hunk.Header + "\n")
-
-	for _, line := range hunk.Lines {
-		switch line.Type {
-		case git.LineAdded:
-			content.WriteString("+" + line.Content + "\n")
-		case git.LineRemoved:
-			content.WriteString("-" + line.Content + "\n")
-		default:
-			content.WriteString(" " + line.Content + "\n")
-		}
-	}
-
-	// Write to temp .patch file
-	tmpFile, err := os.CreateTemp("", "gxt-*.patch")
-	if err != nil {
-		ShowErrorModal(v.app, "Error", err.Error())
-		return
-	}
-	tmpPath := tmpFile.Name()
-	tmpFile.WriteString(content.String())
-	tmpFile.Close()
-
-	// Open in editor
-	v.openInEditor(tmpPath)
-
-	// Read back edited content
-	newContent, err := os.ReadFile(tmpPath)
-	os.Remove(tmpPath)
-	if err != nil {
-		v.loadFiles()
-		return
-	}
-
-	// Apply the edited patch
-	v.applyEditedPatch(entry.Path, hunk, string(newContent))
-}
-
-func (v *StagingWorkflowView) applyEditedPatch(filePath string, originalHunk *git.DiffHunk, patchContent string) {
-	// Parse the edited patch to extract hunk lines
-	lines := strings.Split(patchContent, "\n")
-	var newLines []*git.DiffLine
-	inHunk := false
-
-	for _, line := range lines {
-		// Skip diff headers
-		if strings.HasPrefix(line, "diff --git") ||
-			strings.HasPrefix(line, "---") ||
-			strings.HasPrefix(line, "+++") {
-			continue
-		}
-		// Start of hunk
-		if strings.HasPrefix(line, "@@") {
-			inHunk = true
-			continue
-		}
-		if !inHunk || len(line) == 0 {
-			continue
-		}
-
-		diffLine := &git.DiffLine{}
-		if len(line) > 0 {
-			diffLine.Content = line[1:]
-			switch line[0] {
-			case '+':
-				diffLine.Type = git.LineAdded
-			case '-':
-				diffLine.Type = git.LineRemoved
-			default:
-				diffLine.Type = git.LineContext
-			}
-			newLines = append(newLines, diffLine)
-		}
-	}
-
-	if len(newLines) == 0 {
-		v.loadFiles()
-		return
-	}
-
-	modifiedHunk := &git.DiffHunk{
-		Header:   originalHunk.Header,
-		OldStart: originalHunk.OldStart,
-		OldCount: originalHunk.OldCount,
-		NewStart: originalHunk.NewStart,
-		NewCount: originalHunk.NewCount,
-		Lines:    newLines,
-	}
-
-	if err := v.repo.StageHunk(filePath, modifiedHunk); err != nil {
-		ShowErrorModal(v.app, "Stage Failed", err.Error())
-		v.loadFiles()
-		return
-	}
-
+	// Open the real file in $EDITOR, jumping to the relevant hunk's line so the
+	// user edits the working tree directly. Nothing is staged.
+	fullPath := filepath.Join(v.repo.Path(), data.file.Path)
+	v.openInEditorAtLine(fullPath, v.hunkLine(data))
 	v.loadFiles()
+}
+
+// hunkLine returns the new-file line to jump to for a node: the start of its
+// hunk, or the first hunk of a file. Returns 0 (top of file) when unknown.
+func (v *StagingWorkflowView) hunkLine(data *nodeData) int {
+	if data.hunk != nil {
+		return data.hunk.NewStart
+	}
+	key := data.file.Path
+	if data.isStaged {
+		key = "staged:" + data.file.Path
+	}
+	if hunks := v.fileHunks[key]; len(hunks) > 0 {
+		return hunks[0].NewStart
+	}
+	return 0
 }
 
 func (v *StagingWorkflowView) openInEditor(path string) {
@@ -868,7 +884,7 @@ func (v *StagingWorkflowView) stash() {
 
 // Draw renders the staging workflow view.
 func (v *StagingWorkflowView) Draw(screen tcell.Screen) {
-	v.Box.DrawForSubclass(screen, v)
+	v.Box.DrawForSubclass(screen)
 	x, y, width, height := v.GetInnerRect()
 
 	if width <= 0 || height <= 0 {
@@ -879,178 +895,163 @@ func (v *StagingWorkflowView) Draw(screen tcell.Screen) {
 	v.mainSplit.Draw(screen)
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
 func (v *StagingWorkflowView) GetRect() (int, int, int, int) { return v.Box.GetRect() }
 func (v *StagingWorkflowView) SetRect(x, y, w, h int)        { v.Box.SetRect(x, y, w, h) }
-func (v *StagingWorkflowView) Focus(d func(tview.Primitive)) { v.Box.Focus(d) }
 func (v *StagingWorkflowView) Blur()                         { v.Box.Blur() }
 func (v *StagingWorkflowView) HasFocus() bool                { return v.Box.HasFocus() }
 
-func (v *StagingWorkflowView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.Box.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
-		if handler := v.mainSplit.MouseHandler(); handler != nil {
-			return handler(action, event, setFocus)
-		}
-		return false, nil
-	})
-}
+func (v *StagingWorkflowView) HandleKey(event *tcell.EventKey) bool {
+	// Handle escape
+	if event.Key() == tcell.KeyEscape {
+		v.app.Pages().Pop()
+		return true
+	}
 
-func (v *StagingWorkflowView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
-
-func (v *StagingWorkflowView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.Box.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		// Handle escape
-		if event.Key() == tcell.KeyEscape {
-			v.app.Pages().Pop()
-			return
-		}
-
-		// Handle Tab to cycle between unstaged, staged, and preview
-		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
-			if event.Key() == tcell.KeyBacktab {
-				// Reverse cycle
-				if v.focusPanel == 0 {
-					v.focusPanel = 2
-				} else {
-					v.focusPanel--
-				}
-			} else {
-				v.focusPanel = (v.focusPanel + 1) % 3
-			}
-			v.updateFocusState()
-			// Trigger preview update when switching to a tree
+	// Handle Tab to cycle between unstaged, staged, and preview
+	if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab {
+			// Reverse cycle
 			if v.focusPanel == 0 {
-				if node := v.unstagedTree.GetSelected(); node != nil {
-					v.onNodeHighlight(node)
-				}
-			} else if v.focusPanel == 1 {
-				if node := v.stagedTree.GetSelected(); node != nil {
-					v.onNodeHighlight(node)
-				}
+				v.focusPanel = 2
+			} else {
+				v.focusPanel--
 			}
-			return
+		} else {
+			v.focusPanel = (v.focusPanel + 1) % 3
 		}
-
-		// Get current tree based on focus
-		var currentTree *components.Tree
+		v.updateFocusState()
+		// Trigger preview update when switching to a tree
 		if v.focusPanel == 0 {
-			currentTree = v.unstagedTree
+			if node := v.unstagedTree.GetSelected(); node != nil {
+				v.onNodeHighlight(node)
+			}
 		} else if v.focusPanel == 1 {
-			currentTree = v.stagedTree
+			if node := v.stagedTree.GetSelected(); node != nil {
+				v.onNodeHighlight(node)
+			}
+		}
+		return true
+	}
+
+	// Get current tree based on focus
+	var currentTree *components.Tree
+	if v.focusPanel == 0 {
+		currentTree = v.unstagedTree
+	} else if v.focusPanel == 1 {
+		currentTree = v.stagedTree
+	}
+
+	// Handle our custom keys (only when tree has focus)
+	if v.focusPanel == 0 || v.focusPanel == 1 {
+		switch event.Key() {
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case ' ':
+				v.stageSelected()
+				return true
+			case 'd':
+				v.discardSelected()
+				return true
+			case 'e', 'E':
+				v.editSelected()
+				return true
+			case 'c', 'C':
+				v.commit()
+				return true
+			case 'a', 'A':
+				v.amend()
+				return true
+			case 's', 'S':
+				v.stash()
+				return true
+			case 'q':
+				v.app.Pages().Pop()
+				return true
+			}
 		}
 
-		// Handle our custom keys (only when tree has focus)
-		if v.focusPanel == 0 || v.focusPanel == 1 {
-			switch event.Key() {
-			case tcell.KeyRune:
-				switch event.Rune() {
-				case ' ':
-					v.stageSelected()
-					return
-				case 'd':
-					v.discardSelected()
-					return
-				case 'e', 'E':
-					v.editSelected()
-					return
-				case 'c', 'C':
-					v.commit()
-					return
-				case 'a', 'A':
-					v.amend()
-					return
-				case 's', 'S':
-					v.stash()
-					return
-				case 'q':
-					v.app.Pages().Pop()
-					return
-				}
+		// Pass to appropriate tree for navigation
+		if currentTree != nil {
+			return currentTree.HandleKey(event)
+		}
+	} else if v.focusPanel == 2 {
+		// Preview panel has focus - handle scrolling
+		switch event.Key() {
+		case tcell.KeyDown:
+			row, col := v.previewText.GetScrollOffset()
+			v.previewText.ScrollTo(row+1, col)
+			return true
+		case tcell.KeyUp:
+			row, col := v.previewText.GetScrollOffset()
+			if row > 0 {
+				v.previewText.ScrollTo(row-1, col)
 			}
-
-			// Pass to appropriate tree for navigation
-			if currentTree != nil {
-				if handler := currentTree.InputHandler(); handler != nil {
-					handler(event, setFocus)
+			return true
+		case tcell.KeyPgDn:
+			row, col := v.previewText.GetScrollOffset()
+			v.previewText.ScrollTo(row+10, col)
+			return true
+		case tcell.KeyPgUp:
+			row, col := v.previewText.GetScrollOffset()
+			v.previewText.ScrollTo(row-10, col)
+			return true
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'h':
+				// Move back to the tree panel we came from
+				v.focusPanel = v.lastTreePanel
+				v.updateFocusState()
+				// Trigger preview update
+				if v.focusPanel == 0 {
+					if node := v.unstagedTree.GetSelected(); node != nil {
+						v.onNodeHighlight(node)
+					}
+				} else if v.focusPanel == 1 {
+					if node := v.stagedTree.GetSelected(); node != nil {
+						v.onNodeHighlight(node)
+					}
 				}
-			}
-		} else if v.focusPanel == 2 {
-			// Preview panel has focus - handle scrolling
-			switch event.Key() {
-			case tcell.KeyDown:
+				return true
+			case 'e', 'E':
+				v.editSelected()
+				return true
+			case ' ':
+				v.stageSelected()
+				return true
+			case 'd':
+				v.discardSelected()
+				return true
+			case 'j':
 				row, col := v.previewText.GetScrollOffset()
 				v.previewText.ScrollTo(row+1, col)
-				return
-			case tcell.KeyUp:
+				return true
+			case 'k':
 				row, col := v.previewText.GetScrollOffset()
 				if row > 0 {
 					v.previewText.ScrollTo(row-1, col)
 				}
-				return
-			case tcell.KeyPgDn:
-				row, col := v.previewText.GetScrollOffset()
-				v.previewText.ScrollTo(row+10, col)
-				return
-			case tcell.KeyPgUp:
-				row, col := v.previewText.GetScrollOffset()
-				v.previewText.ScrollTo(row-10, col)
-				return
-			case tcell.KeyRune:
-				switch event.Rune() {
-				case 'h':
-					// Move back to the tree panel we came from
-					v.focusPanel = v.lastTreePanel
-					v.updateFocusState()
-					// Trigger preview update
-					if v.focusPanel == 0 {
-						if node := v.unstagedTree.GetSelected(); node != nil {
-							v.onNodeHighlight(node)
-						}
-					} else if v.focusPanel == 1 {
-						if node := v.stagedTree.GetSelected(); node != nil {
-							v.onNodeHighlight(node)
-						}
-					}
-					return
-				case 'e', 'E':
-					v.editSelected()
-					return
-				case ' ':
-					v.stageSelected()
-					return
-				case 'd':
-					v.discardSelected()
-					return
-				case 'j':
-					row, col := v.previewText.GetScrollOffset()
-					v.previewText.ScrollTo(row+1, col)
-					return
-				case 'k':
-					row, col := v.previewText.GetScrollOffset()
-					if row > 0 {
-						v.previewText.ScrollTo(row-1, col)
-					}
-					return
-				case 'g':
-					v.previewText.ScrollToBeginning()
-					return
-				case 'G':
-					v.previewText.ScrollToEnd()
-					return
-				case 'q':
-					v.app.Pages().Pop()
-					return
-				}
-			case tcell.KeyCtrlD:
-				row, col := v.previewText.GetScrollOffset()
-				v.previewText.ScrollTo(row+5, col)
-				return
-			case tcell.KeyCtrlU:
-				row, col := v.previewText.GetScrollOffset()
-				v.previewText.ScrollTo(row-5, col)
-				return
+				return true
+			case 'g':
+				v.previewText.ScrollTo(0, 0)
+				return true
+			case 'G':
+				v.previewText.ScrollTo(999999, 0)
+				return true
+			case 'q':
+				v.app.Pages().Pop()
+				return true
 			}
+		case tcell.KeyCtrlD:
+			row, col := v.previewText.GetScrollOffset()
+			v.previewText.ScrollTo(row+5, col)
+			return true
+		case tcell.KeyCtrlU:
+			row, col := v.previewText.GetScrollOffset()
+			v.previewText.ScrollTo(row-5, col)
+			return true
 		}
-	})
+	}
+	return false
 }

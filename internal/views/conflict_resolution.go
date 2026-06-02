@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
@@ -43,15 +43,15 @@ const (
 
 // ConflictResolutionView provides a UI for resolving merge/rebase conflicts.
 type ConflictResolutionView struct {
-	*tview.Box
-	mainSplit  *components.Split
-	topSplit   *components.Split
-	leftSplit  *components.Split
+	core.Box
+	mainSplit *components.Split
+	topSplit  *components.Split
+	leftSplit *components.Split
 
-	oursText   *tview.TextView
-	baseText   *tview.TextView
-	theirsText *tview.TextView
-	resolvedText *tview.TextView
+	oursText     *core.TextView
+	baseText     *core.TextView
+	theirsText   *core.TextView
+	resolvedText *core.TextView
 
 	oursPanel     *components.Panel
 	basePanel     *components.Panel
@@ -61,13 +61,13 @@ type ConflictResolutionView struct {
 	repo *git.Repository
 	app  *layout.App
 
-	state             *git.ConflictState
-	currentFileIndex  int
-	conflictFiles     []git.StatusEntry
-	currentRegions    []*git.ConflictRegion
-	fullFileLines     []string
-	resolvedLines     []ResolvedLine
-	currentRegionIdx  int
+	state            *git.ConflictState
+	currentFileIndex int
+	conflictFiles    []git.StatusEntry
+	currentRegions   []*git.ConflictRegion
+	fullFileLines    []string
+	resolvedLines    []ResolvedLine
+	currentRegionIdx int
 
 	focusPanel  int         // 0=ours, 1=base, 2=theirs, 3=resolved
 	displayMode DisplayMode
@@ -76,11 +76,10 @@ type ConflictResolutionView struct {
 // NewConflictResolutionView creates a new conflict resolution view.
 func NewConflictResolutionView(app *layout.App, repo *git.Repository) *ConflictResolutionView {
 	v := &ConflictResolutionView{
-		Box:          tview.NewBox(),
-		oursText:     tview.NewTextView(),
-		baseText:     tview.NewTextView(),
-		theirsText:   tview.NewTextView(),
-		resolvedText: tview.NewTextView(),
+		oursText:     core.NewTextView(),
+		baseText:     core.NewTextView(),
+		theirsText:   core.NewTextView(),
+		resolvedText: core.NewTextView(),
 		repo:         repo,
 		app:          app,
 		displayMode:  DisplayConflicts,
@@ -92,15 +91,13 @@ func NewConflictResolutionView(app *layout.App, repo *git.Repository) *ConflictR
 
 func (v *ConflictResolutionView) setup() {
 	v.Box.SetBackgroundColor(theme.Bg())
-	theme.Register(v.Box)
 
 	// Configure text views
-	for _, tv := range []*tview.TextView{v.oursText, v.baseText, v.theirsText, v.resolvedText} {
+	for _, tv := range []*core.TextView{v.oursText, v.baseText, v.theirsText, v.resolvedText} {
 		tv.SetDynamicColors(true)
 		tv.SetWordWrap(false)
 		tv.SetScrollable(true)
 		tv.SetBackgroundColor(theme.Bg())
-		theme.Register(tv)
 	}
 
 	// Create panels
@@ -246,14 +243,16 @@ func (v *ConflictResolutionView) displayCurrentRegion() {
 	// Ours section
 	oursText.WriteString(fmt.Sprintf("[%s]<<<<<<< %s[-]\n", theme.TagError(), region.OursLabel))
 	for _, line := range region.OursLines {
-		oursText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), tview.Escape(line)))
+		escaped := strings.ReplaceAll(line, "[", "[[]")
+		oursText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), escaped))
 	}
 
 	// Base section
 	if region.HasBase && len(region.BaseLines) > 0 {
 		baseText.WriteString(fmt.Sprintf("[%s]||||||| merged common ancestors[-]\n", theme.TagFgDim()))
 		for _, line := range region.BaseLines {
-			baseText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), tview.Escape(line)))
+			escaped := strings.ReplaceAll(line, "[", "[[]")
+			baseText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), escaped))
 		}
 	} else {
 		baseText.WriteString(fmt.Sprintf("[%s]No base available[-]", theme.TagFgDim()))
@@ -262,7 +261,8 @@ func (v *ConflictResolutionView) displayCurrentRegion() {
 	// Theirs section
 	theirsText.WriteString(fmt.Sprintf("[%s]>>>>>>> %s[-]\n", theme.TagSuccess(), region.TheirsLabel))
 	for _, line := range region.TheirsLines {
-		theirsText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), tview.Escape(line)))
+		escaped := strings.ReplaceAll(line, "[", "[[]")
+		theirsText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), escaped))
 	}
 
 	v.oursText.SetText(oursText.String())
@@ -292,12 +292,13 @@ func (v *ConflictResolutionView) updateResolvedPane() {
 		for _, line := range v.resolvedLines {
 			prefix := v.getSourcePrefix(line.Source)
 			color := v.getSourceColor(line.Source)
-			text.WriteString(fmt.Sprintf("[%s][%s][-] %s\n", color, prefix, tview.Escape(line.Content)))
+			escaped := strings.ReplaceAll(line.Content, "[", "[[]")
+			text.WriteString(fmt.Sprintf("[%s][%s][-] %s\n", color, prefix, escaped))
 		}
 	}
 
 	v.resolvedText.SetText(text.String())
-	v.resolvedText.ScrollToBeginning()
+	v.resolvedText.ScrollTo(0, 0)
 }
 
 func (v *ConflictResolutionView) getSourcePrefix(source LineSource) string {
@@ -592,10 +593,10 @@ func (v *ConflictResolutionView) updateFocusState() {
 	v.resolvedPanel.SetFocused(v.focusPanel == 3)
 }
 
-// tview.Primitive implementation
+// core.Widget implementation
 
 func (v *ConflictResolutionView) Draw(screen tcell.Screen) {
-	v.Box.DrawForSubclass(screen, v)
+	v.Box.DrawForSubclass(screen)
 	x, y, width, height := v.GetInnerRect()
 
 	if width <= 0 || height <= 0 {
@@ -608,98 +609,82 @@ func (v *ConflictResolutionView) Draw(screen tcell.Screen) {
 
 func (v *ConflictResolutionView) GetRect() (int, int, int, int) { return v.Box.GetRect() }
 func (v *ConflictResolutionView) SetRect(x, y, w, h int)        { v.Box.SetRect(x, y, w, h) }
-func (v *ConflictResolutionView) Focus(d func(tview.Primitive)) { v.Box.Focus(d) }
 func (v *ConflictResolutionView) Blur()                         { v.Box.Blur() }
 func (v *ConflictResolutionView) HasFocus() bool                { return v.Box.HasFocus() }
 
-func (v *ConflictResolutionView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.Box.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
-		if handler := v.mainSplit.MouseHandler(); handler != nil {
-			return handler(action, event, setFocus)
-		}
-		return false, nil
-	})
-}
+func (v *ConflictResolutionView) HandleKey(event *tcell.EventKey) bool {
+	// Handle escape
+	if event.Key() == tcell.KeyEscape {
+		v.abortOperation()
+		return true
+	}
 
-func (v *ConflictResolutionView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	// Handle Tab to cycle focus
+	if event.Key() == tcell.KeyTab {
+		v.focusPanel = (v.focusPanel + 1) % 4
+		v.updateFocusState()
+		return true
+	}
 
-func (v *ConflictResolutionView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.Box.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		// Handle escape
-		if event.Key() == tcell.KeyEscape {
-			v.abortOperation()
-			return
+	// Handle key shortcuts
+	switch event.Rune() {
+	case 'o', 'O':
+		v.acceptOurs()
+		return true
+	case 'b', 'B':
+		if event.Rune() == 'B' {
+			// Shift+B = accept both
+			v.acceptBoth()
+		} else {
+			v.acceptBase()
 		}
+		return true
+	case 't', 'T':
+		v.acceptTheirs()
+		return true
+	case 'e', 'E':
+		v.openInEditor()
+		return true
+	case 's', 'S':
+		v.saveResolution()
+		return true
+	case 'C':
+		// Shift+C = continue operation
+		v.promptContinue()
+		return true
+	case 'x', 'X':
+		v.abortOperation()
+		return true
+	case 'c':
+		// lowercase c = clear resolved
+		if v.focusPanel == 3 {
+			v.clearResolved()
+		}
+		return true
+	case 'n':
+		// Next region
+		v.moveToNextRegion()
+		return true
+	case 'p':
+		// Previous region
+		v.moveToPrevRegion()
+		return true
+	case 'j':
+		// Scroll down in focused pane
+		v.scrollFocusedPane(1)
+		return true
+	case 'k':
+		// Scroll up in focused pane
+		v.scrollFocusedPane(-1)
+		return true
+	}
 
-		// Handle Tab to cycle focus
-		if event.Key() == tcell.KeyTab {
-			v.focusPanel = (v.focusPanel + 1) % 4
-			v.updateFocusState()
-			return
-		}
-
-		// Handle key shortcuts
-		switch event.Rune() {
-		case 'o', 'O':
-			v.acceptOurs()
-			return
-		case 'b', 'B':
-			if event.Rune() == 'B' {
-				// Shift+B = accept both
-				v.acceptBoth()
-			} else {
-				v.acceptBase()
-			}
-			return
-		case 't', 'T':
-			v.acceptTheirs()
-			return
-		case 'e', 'E':
-			v.openInEditor()
-			return
-		case 's', 'S':
-			v.saveResolution()
-			return
-		case 'C':
-			// Shift+C = continue operation
-			v.promptContinue()
-			return
-		case 'x', 'X':
-			v.abortOperation()
-			return
-		case 'c':
-			// lowercase c = clear resolved
-			if v.focusPanel == 3 {
-				v.clearResolved()
-			}
-			return
-		case 'n':
-			// Next region
-			v.moveToNextRegion()
-			return
-		case 'p':
-			// Previous region
-			v.moveToPrevRegion()
-			return
-		case 'j':
-			// Scroll down in focused pane
-			v.scrollFocusedPane(1)
-			return
-		case 'k':
-			// Scroll up in focused pane
-			v.scrollFocusedPane(-1)
-			return
-		}
-
-		// Delegate to split for other navigation
-		if handler := v.mainSplit.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	// Delegate to split for other navigation
+	return v.mainSplit.HandleKey(event)
 }
 
 func (v *ConflictResolutionView) scrollFocusedPane(delta int) {
-	var targetText *tview.TextView
+	var targetText *core.TextView
 	switch v.focusPanel {
 	case 0:
 		targetText = v.oursText

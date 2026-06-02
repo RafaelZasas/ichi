@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rivo/tview"
-
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
-	"github.com/atterpac/jig/validators"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
+	"github.com/atterpac/dado/validators"
 )
 
 // ShowConfirmModal displays a confirmation dialog.
@@ -251,9 +250,9 @@ func ShowInfoModal(app *layout.App, title, message string) {
 		BlockUntilDismissed:   false,
 	})
 
-	messageView := tview.NewTextView().
+	messageView := core.NewTextView().
 		SetText(message).
-		SetTextAlign(tview.AlignLeft).
+		SetTextAlign(core.AlignLeft).
 		SetDynamicColors(true).
 		SetWordWrap(true)
 	messageView.SetBackgroundColor(theme.Bg())

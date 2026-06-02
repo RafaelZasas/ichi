@@ -4,16 +4,15 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/layout"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
 )
 
-// FinderModal provides a command palette / fuzzy finder using jig's modal.
+// FinderModal provides a command palette / fuzzy finder using dado's modal.
 type FinderModal struct {
 	*components.Modal
 	finder    *components.Finder
@@ -274,14 +273,9 @@ func (m *FinderModal) Hints() []components.KeyHint {
 	}
 }
 
-// Focus delegates focus to the finder.
-func (m *FinderModal) Focus(delegate func(tview.Primitive)) {
-	delegate(m.finder)
-}
-
-// InputHandler delegates to finder's input handler.
-func (m *FinderModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return m.finder.InputHandler()
+// HandleKey delegates to finder's key handler.
+func (m *FinderModal) HandleKey(ev *tcell.EventKey) bool {
+	return m.finder.HandleKey(ev)
 }
 
 // ShowFinder displays the command palette modal.

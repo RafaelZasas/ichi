@@ -81,13 +81,13 @@ type DiffHunk struct {
 
 // FileDiff represents all changes to a single file.
 type FileDiff struct {
-	Path     string      // File path
-	OldPath  string      // Old path (for renames)
-	Status   FileStatus  // Added, Modified, Deleted, Renamed
-	Hunks    []*DiffHunk // All hunks in this file
-	Binary   bool        // True if binary file
-	NewFile  bool        // True if this is a new file
-	Deleted  bool        // True if this file was deleted
+	Path    string      // File path
+	OldPath string      // Old path (for renames)
+	Status  FileStatus  // Added, Modified, Deleted, Renamed
+	Hunks   []*DiffHunk // All hunks in this file
+	Binary  bool        // True if binary file
+	NewFile bool        // True if this is a new file
+	Deleted bool        // True if this file was deleted
 }
 
 // ParseDiff parses git diff output into structured hunks.

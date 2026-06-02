@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/git"
 	"github.com/atterpac/gxt/internal/selection"
@@ -19,10 +19,10 @@ import (
 
 // CommitView displays detailed commit information.
 type CommitView struct {
-	flex         *tview.Flex
-	infoPanel    *tview.TextView
+	flex         *core.Flex
+	infoPanel    *core.TextView
 	filesTable   *components.Table
-	diffPreview  *tview.TextView
+	diffPreview  *core.TextView
 	filesPanel   *components.Panel
 	diffPanel    *components.Panel
 	repo         *git.Repository
@@ -30,17 +30,16 @@ type CommitView struct {
 	hash         string
 	commit       *git.CommitDetail
 	actions      *input.ActionRegistry
-	selectedFile int
 	focusFiles   bool // true = files table focused, false = diff preview focused
 }
 
 // NewCommitView creates a new commit detail view.
 func NewCommitView(app *layout.App, repo *git.Repository, hash string) *CommitView {
 	v := &CommitView{
-		flex:        tview.NewFlex(),
-		infoPanel:   tview.NewTextView(),
+		flex:        core.NewFlex(),
+		infoPanel:   core.NewTextView(),
 		filesTable:  components.NewTable(),
-		diffPreview: tview.NewTextView(),
+		diffPreview: core.NewTextView(),
 		repo:        repo,
 		app:         app,
 		hash:        hash,
@@ -54,7 +53,6 @@ func (v *CommitView) setup() {
 	// Configure info panel
 	v.infoPanel.SetDynamicColors(true).SetWordWrap(true)
 	v.infoPanel.SetBackgroundColor(theme.Bg())
-	theme.Register(v.infoPanel)
 
 	// Configure files table
 	v.filesTable.SetHeaders("Status", "File")
@@ -66,7 +64,6 @@ func (v *CommitView) setup() {
 	// Configure diff preview panel
 	v.diffPreview.SetDynamicColors(true).SetWordWrap(false)
 	v.diffPreview.SetBackgroundColor(theme.Bg())
-	theme.Register(v.diffPreview)
 
 	// Wrap in panels
 	infoWrapper := components.NewPanel().
@@ -82,18 +79,16 @@ func (v *CommitView) setup() {
 		SetContent(v.diffPreview)
 
 	// Right side: files table (top) + diff preview (bottom)
-	rightFlex := tview.NewFlex().SetDirection(tview.FlexRow)
+	rightFlex := core.NewFlex().SetDirection(core.Column)
 	rightFlex.AddItem(v.filesPanel, 0, 2, true)
 	rightFlex.AddItem(v.diffPanel, 0, 3, false)
 	rightFlex.SetBackgroundColor(theme.Bg())
-	theme.Register(rightFlex)
 
 	// Layout: info (left 40%) | files+preview (right 60%)
-	v.flex.SetDirection(tview.FlexColumn)
+	v.flex.SetDirection(core.Row)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(infoWrapper, 0, 2, false)
 	v.flex.AddItem(rightFlex, 0, 3, true)
-	theme.Register(v.flex)
 
 	// Register actions
 	v.actions = input.NewActionRegistry().
@@ -178,9 +173,7 @@ func (v *CommitView) updateInfo() {
 	c := v.commit
 	var text strings.Builder
 
-	// ═══════════════════════════════════════════════════════════
 	// Subject (title)
-	// ═══════════════════════════════════════════════════════════
 	text.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagAccent(), c.Subject))
 
 	// Body (if different from subject)
@@ -194,11 +187,7 @@ func (v *CommitView) updateInfo() {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// Commit Details Section
-	// ═══════════════════════════════════════════════════════════
 	text.WriteString(fmt.Sprintf("\n[%s::b]─── Commit ───[-:-:-]\n", theme.TagFgDim()))
-
 	text.WriteString(fmt.Sprintf("[%s]Hash:[-]        %s\n", theme.TagFgDim(), c.Hash))
 
 	// GPG Signature
@@ -219,11 +208,7 @@ func (v *CommitView) updateInfo() {
 		text.WriteString(fmt.Sprintf("[%s]Signature:[-]   [%s]Unsigned[-]\n", theme.TagFgDim(), theme.TagFgDim()))
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// Author Section
-	// ═══════════════════════════════════════════════════════════
 	text.WriteString(fmt.Sprintf("\n[%s::b]─── Author ───[-:-:-]\n", theme.TagFgDim()))
-
 	text.WriteString(fmt.Sprintf("[%s]Name:[-]        %s <%s>\n", theme.TagFgDim(), c.Author, c.AuthorEmail))
 	text.WriteString(fmt.Sprintf("[%s]Date:[-]        %s [%s](%s)[-]\n",
 		theme.TagFgDim(),
@@ -242,9 +227,6 @@ func (v *CommitView) updateInfo() {
 			relativeTime(c.CommitterDate)))
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// Parents Section
-	// ═══════════════════════════════════════════════════════════
 	if len(c.Parents) > 0 {
 		text.WriteString(fmt.Sprintf("\n[%s::b]─── Parents ───[-:-:-]\n", theme.TagFgDim()))
 		for i, parent := range c.Parents {
@@ -267,9 +249,6 @@ func (v *CommitView) updateInfo() {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// Refs Section
-	// ═══════════════════════════════════════════════════════════
 	if len(c.Refs) > 0 {
 		text.WriteString(fmt.Sprintf("\n[%s::b]─── Refs ───[-:-:-]\n", theme.TagFgDim()))
 		for _, ref := range c.Refs {
@@ -281,12 +260,8 @@ func (v *CommitView) updateInfo() {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// Branches Containing Section
-	// ═══════════════════════════════════════════════════════════
 	if len(c.Branches) > 0 {
 		text.WriteString(fmt.Sprintf("\n[%s::b]─── Branches Containing ───[-:-:-]\n", theme.TagFgDim()))
-		// Show first 10 branches, then count
 		maxShow := 10
 		for i, branch := range c.Branches {
 			if i >= maxShow {
@@ -301,9 +276,6 @@ func (v *CommitView) updateInfo() {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════
-	// Stats Section
-	// ═══════════════════════════════════════════════════════════
 	text.WriteString(fmt.Sprintf("\n[%s::b]─── Changes ───[-:-:-]\n", theme.TagFgDim()))
 	text.WriteString(fmt.Sprintf("[%s]Files:[-]       %d changed\n", theme.TagFgDim(), c.Stats.FilesChanged))
 	text.WriteString(fmt.Sprintf("[%s]Lines:[-]       [%s]+%d[-] / [%s]-%d[-]\n",
@@ -525,6 +497,8 @@ func (v *CommitView) formatDiffPreview(diff string) string {
 			break
 		}
 
+		escaped := strings.ReplaceAll(line, "[", "[[]")
+
 		if len(line) == 0 {
 			result.WriteString("\n")
 			lineCount++
@@ -535,28 +509,28 @@ func (v *CommitView) formatDiffPreview(diff string) string {
 		switch line[0] {
 		case '+':
 			if strings.HasPrefix(line, "+++") {
-				result.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagFgDim(), tview.Escape(line)))
+				result.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagFgDim(), escaped))
 			} else {
-				result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), tview.Escape(line)))
+				result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), escaped))
 			}
 		case '-':
 			if strings.HasPrefix(line, "---") {
-				result.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagFgDim(), tview.Escape(line)))
+				result.WriteString(fmt.Sprintf("[%s::b]%s[-:-:-]\n", theme.TagFgDim(), escaped))
 			} else {
-				result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), tview.Escape(line)))
+				result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), escaped))
 			}
 		case '@':
-			result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), tview.Escape(line)))
+			result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), escaped))
 		case 'd', 'i', 'n', 'o', 's', 'B': // diff headers
 			if strings.HasPrefix(line, "diff ") || strings.HasPrefix(line, "index ") ||
 				strings.HasPrefix(line, "new ") || strings.HasPrefix(line, "old ") ||
 				strings.HasPrefix(line, "similarity") || strings.HasPrefix(line, "Binary") {
-				result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFgDim(), tview.Escape(line)))
+				result.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFgDim(), escaped))
 			} else {
-				result.WriteString(tview.Escape(line) + "\n")
+				result.WriteString(escaped + "\n")
 			}
 		default:
-			result.WriteString(tview.Escape(line) + "\n")
+			result.WriteString(escaped + "\n")
 		}
 		lineCount++
 	}
@@ -568,43 +542,26 @@ func (v *CommitView) showError(err error) {
 	v.infoPanel.SetText(fmt.Sprintf("[%s]Error:[-] %v", theme.TagError(), err))
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
-func (v *CommitView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *CommitView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *CommitView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *CommitView) Focus(d func(tview.Primitive)) {
-	// Delegate focus to the appropriate panel based on focus state
+func (v *CommitView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *CommitView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *CommitView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *CommitView) Blur()                         { v.flex.Blur() }
+func (v *CommitView) HasFocus() bool                { return true }
+
+func (v *CommitView) HandleKey(event *tcell.EventKey) bool {
+	if v.actions.Handle(event) {
+		return true
+	}
+
 	if v.focusFiles {
-		d(v.filesTable)
-	} else {
-		d(v.diffPreview)
+		return v.handleFilesInput(event)
 	}
-}
-func (v *CommitView) Blur()                          { v.flex.Blur() }
-func (v *CommitView) HasFocus() bool                 { return true }
-
-func (v *CommitView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
+	return v.handleDiffInput(event)
 }
 
-func (v *CommitView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
-
-func (v *CommitView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if v.actions.Handle(event) {
-			return
-		}
-
-		if v.focusFiles {
-			v.handleFilesInput(event)
-		} else {
-			v.handleDiffInput(event)
-		}
-	}
-}
-
-func (v *CommitView) handleFilesInput(event *tcell.EventKey) {
+func (v *CommitView) handleFilesInput(event *tcell.EventKey) bool {
 	row, col := v.filesTable.GetSelection()
 	prevRow := row
 
@@ -697,10 +654,10 @@ func (v *CommitView) handleFilesInput(event *tcell.EventKey) {
 			return true
 		})
 
-	bindings.Handle(event)
+	return bindings.Handle(event)
 }
 
-func (v *CommitView) handleDiffInput(event *tcell.EventKey) {
+func (v *CommitView) handleDiffInput(event *tcell.EventKey) bool {
 	_, _, _, height := v.diffPreview.GetInnerRect()
 	row, col := v.diffPreview.GetScrollOffset()
 
@@ -740,11 +697,11 @@ func (v *CommitView) handleDiffInput(event *tcell.EventKey) {
 			return true
 		}).
 		On(tcell.KeyHome, func(e *tcell.EventKey) bool {
-			v.diffPreview.ScrollToBeginning()
+			v.diffPreview.ScrollTo(0, 0)
 			return true
 		}).
 		On(tcell.KeyEnd, func(e *tcell.EventKey) bool {
-			v.diffPreview.ScrollToEnd()
+			v.diffPreview.ScrollTo(999999, 0)
 			return true
 		}).
 		OnRune('j', func(e *tcell.EventKey) bool {
@@ -758,13 +715,13 @@ func (v *CommitView) handleDiffInput(event *tcell.EventKey) {
 			return true
 		}).
 		OnRune('g', func(e *tcell.EventKey) bool {
-			v.diffPreview.ScrollToBeginning()
+			v.diffPreview.ScrollTo(0, 0)
 			return true
 		}).
 		OnRune('G', func(e *tcell.EventKey) bool {
-			v.diffPreview.ScrollToEnd()
+			v.diffPreview.ScrollTo(999999, 0)
 			return true
 		})
 
-	bindings.Handle(event)
+	return bindings.Handle(event)
 }

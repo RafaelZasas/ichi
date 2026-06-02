@@ -1,16 +1,15 @@
 package app
 
 import (
-	"github.com/atterpac/jig/components"
-	"github.com/rivo/tview"
+	"github.com/atterpac/dado/components"
 )
 
 // Global toast manager instance
 var toastManager *components.ToastManager
 
-// InitToasts initializes the toast manager with the application.
-func InitToasts(app *tview.Application) {
-	toastManager = components.NewToastManager(app).
+// InitToasts initializes the toast manager.
+func InitToasts() {
+	toastManager = components.NewToastManager().
 		SetPosition(components.ToastBottomRight).
 		SetMaxVisible(3).
 		SetMaxWidth(50)

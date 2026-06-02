@@ -3,9 +3,8 @@ module github.com/atterpac/gxt
 go 1.25.2
 
 require (
-	github.com/atterpac/jig v0.0.6
+	github.com/atterpac/dado v0.0.0
 	github.com/gdamore/tcell/v2 v2.13.4
-	github.com/rivo/tview v0.42.0
 )
 
 require (
@@ -14,7 +13,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )
 
-replace github.com/atterpac/jig => ../jig
+replace github.com/atterpac/dado => ../dado

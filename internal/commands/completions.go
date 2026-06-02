@@ -106,31 +106,47 @@ func filterByPrefix(items []string, prefix string) []string {
 }
 
 // GetSuggestion returns an inline suggestion for the current input.
-// This is the "ghost text" that appears after the cursor.
+// This is the "ghost text" that appears after the cursor. Because ghost text
+// can only extend what the user has typed, the suggestion is always chosen so
+// that it begins with the current input; if no completion extends the input
+// (e.g. a bare base name that matches a file deeper in the tree), no ghost is
+// shown.
 func GetSuggestion(repo *git.Repository, input string) string {
 	completions := GetCompletions(repo, input)
 	if len(completions) == 0 {
 		return ""
 	}
 
-	// Return the first completion as suggestion
-	// Reconstruct full command with this completion
 	parts := strings.Fields(input)
 
-	if len(parts) == 0 {
-		return completions[0]
+	// Completing the command name (first word, no trailing space yet).
+	if len(parts) <= 1 && !IsPartialArg(input) {
+		return firstWithPrefix(completions, input)
 	}
 
-	if len(parts) == 1 && !IsPartialArg(input) {
-		// Completing command name
-		return completions[0]
+	// Completing an argument: reconstruct the full command with each candidate
+	// and return the first one that extends what the user typed.
+	prefix := input
+	if !IsPartialArg(input) {
+		// Drop the partial last token so we can replace it with a candidate.
+		prefix = strings.TrimSuffix(input, parts[len(parts)-1])
 	}
-
-	// Completing an argument - replace last part with completion
-	if IsPartialArg(input) {
-		return input + completions[0]
+	for _, c := range completions {
+		full := prefix + c
+		if strings.HasPrefix(strings.ToLower(full), strings.ToLower(input)) {
+			return full
+		}
 	}
+	return ""
+}
 
-	parts[len(parts)-1] = completions[0]
-	return strings.Join(parts, " ")
+// firstWithPrefix returns the first item that has the given prefix
+// (case-insensitive), or "" if none do.
+func firstWithPrefix(items []string, prefix string) string {
+	for _, it := range items {
+		if strings.HasPrefix(strings.ToLower(it), strings.ToLower(prefix)) {
+			return it
+		}
+	}
+	return ""
 }

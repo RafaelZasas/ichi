@@ -386,7 +386,12 @@ func (r *Repository) ListFiles(prefix string) []string {
 		if line == "" {
 			continue
 		}
-		if prefix == "" || strings.HasPrefix(strings.ToLower(line), prefix) {
+		lower := strings.ToLower(line)
+		// Match on the full path (e.g. "cmd/gxt") or the base name (e.g.
+		// "main.go") so a bare file name suggests files in any directory.
+		if prefix == "" ||
+			strings.HasPrefix(lower, prefix) ||
+			strings.HasPrefix(strings.ToLower(filepath.Base(line)), prefix) {
 			files = append(files, line)
 		}
 	}

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/atterpac/jig/clipboard"
+	"github.com/atterpac/dado/clipboard"
 )
 
 // CopyToClipboard copies text to the system clipboard and shows a toast.

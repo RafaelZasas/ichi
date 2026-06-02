@@ -4,13 +4,13 @@ import (
 	"fmt"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/binding"
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/binding"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
@@ -19,7 +19,7 @@ import (
 
 // BranchesView displays the branch list.
 type BranchesView struct {
-	flex       *tview.Flex
+	flex       *core.Flex
 	table      *components.Table
 	repo       *git.Repository
 	app        *layout.App
@@ -31,7 +31,7 @@ type BranchesView struct {
 // NewBranchesView creates a new branches view.
 func NewBranchesView(app *layout.App, repo *git.Repository) *BranchesView {
 	v := &BranchesView{
-		flex:       tview.NewFlex(),
+		flex:       core.NewFlex(),
 		table:      components.NewTable(),
 		repo:       repo,
 		app:        app,
@@ -49,10 +49,9 @@ func (v *BranchesView) setup() {
 		SetTitle("Branches").
 		SetContent(v.table)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(panel, 0, 1, true)
-	theme.Register(v.flex)
 
 	// Setup binding
 	v.binding = binding.NewTableBinding[git.Branch](v.table).
@@ -351,63 +350,48 @@ func truncate(s string, max int) string {
 	return s[:max-1] + "..."
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
-func (v *BranchesView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *BranchesView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *BranchesView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *BranchesView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
-func (v *BranchesView) Blur()                          { v.flex.Blur() }
-func (v *BranchesView) HasFocus() bool                 { return v.flex.HasFocus() }
+func (v *BranchesView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *BranchesView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *BranchesView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *BranchesView) Blur()                         { v.flex.Blur() }
+func (v *BranchesView) HasFocus() bool                { return v.flex.HasFocus() }
 
-func (v *BranchesView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
+func (v *BranchesView) HandleKey(event *tcell.EventKey) bool {
+	if v.actions.Handle(event) {
+		return true
+	}
 
-func (v *BranchesView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	row, col := v.table.GetSelection()
 
-func (v *BranchesView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if v.actions.Handle(event) {
-			return
-		}
+	bindings := input.NewKeyBindings().
+		On(tcell.KeyDown, func(e *tcell.EventKey) bool {
+			if row < v.table.GetRowCount()-1 {
+				v.table.Select(row+1, col)
+			}
+			return true
+		}).
+		On(tcell.KeyUp, func(e *tcell.EventKey) bool {
+			minRow := 1 // Skip header
+			if row > minRow {
+				v.table.Select(row-1, col)
+			}
+			return true
+		}).
+		OnRune('j', func(e *tcell.EventKey) bool {
+			if row < v.table.GetRowCount()-1 {
+				v.table.Select(row+1, col)
+			}
+			return true
+		}).
+		OnRune('k', func(e *tcell.EventKey) bool {
+			minRow := 1 // Skip header
+			if row > minRow {
+				v.table.Select(row-1, col)
+			}
+			return true
+		})
 
-		row, col := v.table.GetSelection()
-
-		bindings := input.NewKeyBindings().
-			On(tcell.KeyDown, func(e *tcell.EventKey) bool {
-				if row < v.table.GetRowCount()-1 {
-					v.table.Select(row+1, col)
-				}
-				return true
-			}).
-			On(tcell.KeyUp, func(e *tcell.EventKey) bool {
-				minRow := 1 // Skip header
-				if row > minRow {
-					v.table.Select(row-1, col)
-				}
-				return true
-			}).
-			OnRune('j', func(e *tcell.EventKey) bool {
-				if row < v.table.GetRowCount()-1 {
-					v.table.Select(row+1, col)
-				}
-				return true
-			}).
-			OnRune('k', func(e *tcell.EventKey) bool {
-				minRow := 1 // Skip header
-				if row > minRow {
-					v.table.Select(row-1, col)
-				}
-				return true
-			})
-
-		if bindings.Handle(event) {
-			return
-		}
-
-		if handler := v.flex.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	return bindings.Handle(event)
 }

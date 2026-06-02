@@ -2,20 +2,20 @@ package views
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
 )
 
-// StagingView provides interactive hunk/line staging using jig's DiffViewer.
+// StagingView provides interactive hunk/line staging using dado's DiffViewer.
 type StagingView struct {
-	*tview.Flex
+	*core.Flex
 	diffViewer *components.DiffViewer
 	repo       *git.Repository
 	app        *layout.App
@@ -28,7 +28,7 @@ type StagingView struct {
 // NewStagingView creates a new interactive staging view.
 func NewStagingView(app *layout.App, repo *git.Repository, file string, staged bool) *StagingView {
 	v := &StagingView{
-		Flex:       tview.NewFlex(),
+		Flex:       core.NewFlex(),
 		diffViewer: components.NewDiffViewer(),
 		repo:       repo,
 		app:        app,
@@ -40,9 +40,8 @@ func NewStagingView(app *layout.App, repo *git.Repository, file string, staged b
 }
 
 func (v *StagingView) setup() {
-	v.Flex.SetDirection(tview.FlexRow)
-	v.Flex.SetBackgroundColor(theme.Bg())
-	theme.Register(v.Flex)
+	v.SetDirection(core.Column)
+	v.SetBackgroundColor(theme.Bg())
 
 	// Configure diff viewer for staging mode
 	v.diffViewer.SetShowLineNumbers(true)
@@ -54,7 +53,7 @@ func (v *StagingView) setup() {
 		SetTitle("Staging: " + v.file).
 		SetContent(v.diffViewer)
 
-	v.Flex.AddItem(panel, 0, 1, true)
+	v.AddItem(panel, 0, 1, true)
 
 	v.actions = input.NewActionRegistry().
 		AddSimple("stage_hunk", 's', "Stage hunk", v.stageHunk).
@@ -249,32 +248,39 @@ func (v *StagingView) clearSelection() {
 	v.diffViewer.ClearSelection()
 }
 
-// Focus delegates focus to the diff viewer.
-func (v *StagingView) Focus(delegate func(tview.Primitive)) {
-	delegate(v.diffViewer)
-}
+// HandleKey handles keyboard input.
+func (v *StagingView) HandleKey(event *tcell.EventKey) bool {
+	// Handle staging-specific actions first
+	if v.actions.Handle(event) {
+		return true
+	}
 
-// InputHandler handles keyboard input.
-func (v *StagingView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.Flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		// Handle staging-specific actions first
-		if v.actions.Handle(event) {
-			return
-		}
+	// Handle J/K for hunk navigation
+	switch event.Rune() {
+	case 'J':
+		v.diffViewer.NextHunk()
+		return true
+	case 'K':
+		v.diffViewer.PrevHunk()
+		return true
+	}
 
-		// Handle J/K for hunk navigation
-		switch event.Rune() {
-		case 'J':
-			v.diffViewer.NextHunk()
-			return
-		case 'K':
-			v.diffViewer.PrevHunk()
-			return
-		}
-
-		// Delegate to diff viewer for other keys
-		if handler := v.diffViewer.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	// Delegate to diff viewer for navigation
+	switch event.Rune() {
+	case 'j':
+		v.diffViewer.MoveDown()
+		return true
+	case 'k':
+		v.diffViewer.MoveUp()
+		return true
+	}
+	switch event.Key() {
+	case tcell.KeyDown:
+		v.diffViewer.MoveDown()
+		return true
+	case tcell.KeyUp:
+		v.diffViewer.MoveUp()
+		return true
+	}
+	return false
 }

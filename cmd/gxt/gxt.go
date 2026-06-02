@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/nav"
-	"github.com/atterpac/jig/theme"
-	"github.com/atterpac/jig/theme/themes"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/nav"
+	"github.com/atterpac/dado/theme"
+	"github.com/atterpac/dado/theme/themes"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/commands"
@@ -22,7 +22,7 @@ import (
 	"github.com/atterpac/gxt/internal/views"
 )
 
-const footerURL = "getgalaxy.io"
+const footerURL = "atterpac.dev"
 
 // ASCII art logo for gxt
 const gxtLogo = `
@@ -36,14 +36,14 @@ const gxtLogo = `
 `
 
 var (
-	repoPath  = flag.String("path", ".", "Path to git repository")
-	noSplash  = flag.Bool("no-splash", false, "Skip splash screen")
+	repoPath = flag.String("path", ".", "Path to git repository")
+	noSplash = flag.Bool("no-splash", false, "Skip splash screen")
 )
 
 func main() {
 	flag.Parse()
 
-	// 1. Initialize theme FIRST (Required by jig)
+	// 1. Initialize theme FIRST (Required by dado)
 	// Load saved theme from config, fallback to TokyoNightNight
 	savedTheme := config.GetTheme()
 	if t := themes.Get(savedTheme); t != nil {
@@ -86,16 +86,17 @@ func main() {
 	app.UpdateStatusBar(statusBar, repo)
 
 	menu := layout.NewMenu().
-		SetRightText("[" + theme.TagFgDim() + "]♥ " + footerURL + "[-]")
+		SetRightText("♥ " + footerURL)
 
-	// Track focused primitive before entering command mode
-	var previousFocus tview.Primitive
+	// Track focused widget before entering command mode
+	var previousFocus core.Widget
 
-	// 5. Create app with 4-tier layout (Required by jig)
+	// 5. Create app with 4-tier layout (Required by dado)
 	application := layout.NewApp(layout.AppConfig{
 		TopBar:     statusBar,
 		BottomBar:  menu,
 		ShowCrumbs: true,
+		Debug:      true,
 		OnComponentChange: func(c nav.Component) {
 			if c != nil {
 				menu.SetHints(c.Hints())
@@ -103,8 +104,15 @@ func main() {
 		},
 	})
 
+	// Wire dado's built-in theme selector (live preview + cancel restore).
+	// Persisting the choice happens through OnChange.
+	application.EnableThemes(layout.ThemeOptions{
+		Default:  savedTheme,
+		OnChange: config.SetTheme,
+	})
+
 	// Initialize toast notifications
-	app.InitToasts(application.GetApplication())
+	app.InitToasts()
 
 	// 6. Set up command mode callbacks
 	cmdCtx := &commands.Context{
@@ -117,14 +125,22 @@ func main() {
 		statusBar.ExitCommandMode()
 		depthBefore := application.Pages().StackDepth()
 		if err := commands.Execute(cmdCtx, text); err != nil {
-			views.ShowErrorModal(application, "Command Error", err.Error())
+			app.ToastError(err.Error())
 		}
 		app.UpdateStatusBar(statusBar, repo)
 		// If a new view was pushed, focus it directly
 		// Otherwise restore previous focus and refresh the current view
 		if application.Pages().StackDepth() > depthBefore {
 			if current := application.Pages().Current(); current != nil {
-				application.SetFocus(current)
+				if w, ok := current.(core.Widget); ok {
+					application.SetFocus(w)
+				} else if previousFocus != nil {
+					// View isn't a core.Widget (most views route input through
+					// the Pages container). Restore focus there so keys reach
+					// the new view's HandleKey instead of staying on the
+					// command bar.
+					application.SetFocus(previousFocus)
+				}
 			}
 		} else {
 			if current := application.Pages().Current(); current != nil {
@@ -138,7 +154,7 @@ func main() {
 
 	statusBar.SetOnCommandCancel(func() {
 		statusBar.ExitCommandMode()
-		// Restore focus to previous primitive
+		// Restore focus to previous widget
 		if previousFocus != nil {
 			application.SetFocus(previousFocus)
 		}
@@ -146,6 +162,12 @@ func main() {
 
 	statusBar.SetOnComplete(func(input string) []string {
 		return commands.GetCompletions(repo, input)
+	})
+
+	// Live auto-complete: as the user types, show the inline ghost-text
+	// suggestion (e.g. ":log cmd/g" suggests ":log cmd/gxt/gxt.go").
+	statusBar.SetOnCommandChange(func(input string) {
+		statusBar.SetSuggestion(commands.GetSuggestion(repo, input))
 	})
 
 	statusBar.SetOnHistoryPrev(commands.HistoryPrev)
@@ -184,8 +206,7 @@ func showSplash(ready <-chan struct{}) error {
 
 	splash.Build()
 
-	splashApp := tview.NewApplication()
-	theme.SetApp(splashApp)
+	splashApp := core.NewApp()
 
 	splash.SetOnClose(func() {
 		splashApp.Stop()
@@ -194,18 +215,18 @@ func showSplash(ready <-chan struct{}) error {
 	// Dismiss splash once data is ready (with a brief minimum display)
 	go func() {
 		minDisplay := time.After(500 * time.Millisecond)
-		<-ready    // Wait for graph data
+		<-ready      // Wait for graph data
 		<-minDisplay // Ensure splash shows for at least 500ms
 		splashApp.QueueUpdateDraw(func() {
 			splashApp.Stop()
 		})
 	}()
 
-	splashApp.SetRoot(splash, true)
+	splashApp.SetRoot(splash)
 	return splashApp.Run()
 }
 
-func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, previousFocus *tview.Primitive) func(*tcell.EventKey) *tcell.EventKey {
+func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		// Don't handle keys when in command mode
 		if statusBar.IsCommandMode() {
@@ -221,30 +242,30 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 		switch {
 		// Enter command mode with ':'
 		case event.Rune() == ':':
-			*previousFocus = app.GetApplication().GetFocus()
+			*previousFocus = app.GetApp().GetFocus()
 			commands.ResetHistoryIndex()
 			statusBar.EnterCommandMode()
-			app.SetFocus(statusBar.GetCommandInput())
+			app.SetFocus(statusBar)
 			return nil
 
-		// Quit on root view only (Required by jig)
+		// Quit on root view only (Required by dado)
 		case event.Rune() == 'q' && app.Pages().StackDepth() <= 1:
 			app.Stop()
 			return nil
 
-		// Go back with Esc (Required by jig)
+		// Go back with Esc (Required by dado)
 		case event.Key() == tcell.KeyEscape:
 			if app.Pages().CanPop() {
 				app.Pages().Pop()
 				return nil
 			}
 
-		// Help modal (Required by jig)
+		// Help modal (Required by dado)
 		case event.Rune() == '?':
 			showHelp(app)
 			return nil
 
-		// Theme selector (Required by jig)
+		// Theme selector (Required by dado)
 		case event.Rune() == 'T':
 			showThemeSelector(app)
 			return nil
@@ -300,5 +321,5 @@ func showHelp(app *layout.App) {
 }
 
 func showThemeSelector(app *layout.App) {
-	views.ShowThemeSelector(app)
+	app.OpenThemeSelector()
 }

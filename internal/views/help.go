@@ -2,26 +2,26 @@ package views
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 )
 
 // HelpView displays keyboard shortcuts and help information.
 type HelpView struct {
-	flex    *tview.Flex
-	content *tview.TextView
+	flex    *core.Flex
+	content *core.TextView
 	app     *layout.App
 }
 
 // NewHelpView creates a new help view.
 func NewHelpView(app *layout.App) *HelpView {
 	v := &HelpView{
-		flex:    tview.NewFlex(),
-		content: tview.NewTextView(),
+		flex:    core.NewFlex(),
+		content: core.NewTextView(),
 		app:     app,
 	}
 	v.setup()
@@ -32,7 +32,6 @@ func (v *HelpView) setup() {
 	v.content.SetDynamicColors(true)
 	v.content.SetWordWrap(true)
 	v.content.SetBackgroundColor(theme.Bg())
-	theme.Register(v.content)
 
 	helpText := `[` + theme.TagAccent() + `::b]gxt - Terminal Git Client[-:-:-]
 
@@ -102,10 +101,9 @@ func (v *HelpView) setup() {
 		SetTitle("Help").
 		SetContent(v.content)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(panel, 0, 1, true)
-	theme.Register(v.flex)
 }
 
 // nav.Component interface
@@ -124,61 +122,46 @@ func (v *HelpView) Hints() []components.KeyHint {
 	}
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
-func (v *HelpView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *HelpView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *HelpView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *HelpView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
-func (v *HelpView) Blur()                          { v.flex.Blur() }
-func (v *HelpView) HasFocus() bool                 { return v.flex.HasFocus() }
+func (v *HelpView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *HelpView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *HelpView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *HelpView) Blur()                         { v.flex.Blur() }
+func (v *HelpView) HasFocus() bool                { return v.flex.HasFocus() }
 
-func (v *HelpView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
+func (v *HelpView) HandleKey(event *tcell.EventKey) bool {
+	row, col := v.content.GetScrollOffset()
 
-func (v *HelpView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	bindings := input.NewKeyBindings().
+		On(tcell.KeyDown, func(e *tcell.EventKey) bool {
+			v.content.ScrollTo(row+1, col)
+			return true
+		}).
+		On(tcell.KeyUp, func(e *tcell.EventKey) bool {
+			if row > 0 {
+				v.content.ScrollTo(row-1, col)
+			}
+			return true
+		}).
+		OnRune('j', func(e *tcell.EventKey) bool {
+			v.content.ScrollTo(row+1, col)
+			return true
+		}).
+		OnRune('k', func(e *tcell.EventKey) bool {
+			if row > 0 {
+				v.content.ScrollTo(row-1, col)
+			}
+			return true
+		}).
+		OnRune('g', func(e *tcell.EventKey) bool {
+			v.content.ScrollTo(0, col)
+			return true
+		}).
+		OnRune('G', func(e *tcell.EventKey) bool {
+			v.content.ScrollTo(999999, col)
+			return true
+		})
 
-func (v *HelpView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		row, col := v.content.GetScrollOffset()
-
-		bindings := input.NewKeyBindings().
-			On(tcell.KeyDown, func(e *tcell.EventKey) bool {
-				v.content.ScrollTo(row+1, col)
-				return true
-			}).
-			On(tcell.KeyUp, func(e *tcell.EventKey) bool {
-				if row > 0 {
-					v.content.ScrollTo(row-1, col)
-				}
-				return true
-			}).
-			OnRune('j', func(e *tcell.EventKey) bool {
-				v.content.ScrollTo(row+1, col)
-				return true
-			}).
-			OnRune('k', func(e *tcell.EventKey) bool {
-				if row > 0 {
-					v.content.ScrollTo(row-1, col)
-				}
-				return true
-			}).
-			OnRune('g', func(e *tcell.EventKey) bool {
-				v.content.ScrollTo(0, col)
-				return true
-			}).
-			OnRune('G', func(e *tcell.EventKey) bool {
-				v.content.ScrollTo(999999, col)
-				return true
-			})
-
-		if bindings.Handle(event) {
-			return
-		}
-
-		if handler := v.flex.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	return bindings.Handle(event)
 }

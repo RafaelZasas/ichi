@@ -5,13 +5,13 @@ import (
 	"os"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/binding"
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/binding"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/git"
 	"github.com/atterpac/gxt/internal/selection"
@@ -19,7 +19,7 @@ import (
 
 // StatusView displays the working tree status.
 type StatusView struct {
-	flex            *tview.Flex
+	flex            *core.Flex
 	stagedTbl       *components.Table
 	unstagedTbl     *components.Table
 	repo            *git.Repository
@@ -34,7 +34,7 @@ type StatusView struct {
 // NewStatusView creates a new status view.
 func NewStatusView(app *layout.App, repo *git.Repository) *StatusView {
 	v := &StatusView{
-		flex:        tview.NewFlex(),
+		flex:        core.NewFlex(),
 		stagedTbl:   components.NewTable(),
 		unstagedTbl: components.NewTable(),
 		repo:        repo,
@@ -70,10 +70,9 @@ func (v *StatusView) setup() {
 		SetLeft(unstagedPanel).
 		SetRight(stagedPanel)
 
-	v.flex.SetDirection(tview.FlexRow)
+	v.flex.SetDirection(core.Column)
 	v.flex.SetBackgroundColor(theme.Bg())
 	v.flex.AddItem(split, 0, 1, true)
-	theme.Register(v.flex)
 
 	// Staged binding - filters for staged entries
 	v.stagedBinding = binding.NewTableBinding[git.StatusEntry](v.stagedTbl).
@@ -305,65 +304,49 @@ func (v *StatusView) openStagingView() {
 	v.app.Crumbs().SetPath([]string{"Status", "Staging", entry.Path})
 }
 
+// core.Widget interface
 
-// tview.Primitive delegation
+func (v *StatusView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *StatusView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *StatusView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *StatusView) Blur()                         { v.flex.Blur() }
+func (v *StatusView) HasFocus() bool                { return v.flex.HasFocus() }
 
-func (v *StatusView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *StatusView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *StatusView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *StatusView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
-func (v *StatusView) Blur()                          { v.flex.Blur() }
-func (v *StatusView) HasFocus() bool                 { return v.flex.HasFocus() }
+func (v *StatusView) HandleKey(event *tcell.EventKey) bool {
+	if v.actions.Handle(event) {
+		return true
+	}
 
-func (v *StatusView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
+	table := v.currentTable()
+	row, col := table.GetSelection()
 
-func (v *StatusView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	bindings := input.NewKeyBindings().
+		On(tcell.KeyDown, func(e *tcell.EventKey) bool {
+			if row < table.GetRowCount()-1 {
+				table.Select(row+1, col)
+			}
+			return true
+		}).
+		On(tcell.KeyUp, func(e *tcell.EventKey) bool {
+			if row > 1 {
+				table.Select(row-1, col)
+			}
+			return true
+		}).
+		OnRune('j', func(e *tcell.EventKey) bool {
+			if row < table.GetRowCount()-1 {
+				table.Select(row+1, col)
+			}
+			return true
+		}).
+		OnRune('k', func(e *tcell.EventKey) bool {
+			if row > 1 {
+				table.Select(row-1, col)
+			}
+			return true
+		})
 
-func (v *StatusView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if v.actions.Handle(event) {
-			return
-		}
-
-		table := v.currentTable()
-		row, col := table.GetSelection()
-
-		bindings := input.NewKeyBindings().
-			On(tcell.KeyDown, func(e *tcell.EventKey) bool {
-				if row < table.GetRowCount()-1 {
-					table.Select(row+1, col)
-				}
-				return true
-			}).
-			On(tcell.KeyUp, func(e *tcell.EventKey) bool {
-				if row > 1 {
-					table.Select(row-1, col)
-				}
-				return true
-			}).
-			OnRune('j', func(e *tcell.EventKey) bool {
-				if row < table.GetRowCount()-1 {
-					table.Select(row+1, col)
-				}
-				return true
-			}).
-			OnRune('k', func(e *tcell.EventKey) bool {
-				if row > 1 {
-					table.Select(row-1, col)
-				}
-				return true
-			})
-
-		if bindings.Handle(event) {
-			return
-		}
-
-		if handler := v.flex.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	return bindings.Handle(event)
 }
 
 // WorkingDiffView shows diff for working tree changes.

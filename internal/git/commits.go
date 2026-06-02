@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/atterpac/jig/components"
+	"github.com/atterpac/dado/components"
 )
 
 // LoadGraph loads the commit graph for visualization.

@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"github.com/atterpac/jig/layout"
+	"github.com/atterpac/dado/layout"
 
 	"github.com/atterpac/gxt/internal/git"
 	"github.com/atterpac/gxt/internal/selection"

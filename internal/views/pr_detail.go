@@ -5,32 +5,32 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/remote"
 )
 
 // PRDetailView shows detailed information about a single PR
 type PRDetailView struct {
-	*tview.Box
-	split      *components.Split
-	fileTree   *components.Tree
-	contentView *tview.TextView
-	app        *layout.App
+	core.Box
+	split       *components.Split
+	fileTree    *components.Tree
+	contentView *core.TextView
+	app         *layout.App
 
-	provider   remote.Provider
-	repoPath   string
-	pr         *remote.PullRequest
-	files      []remote.ChangedFile
-	reviews    []remote.Review
-	comments   []remote.Comment
-	checks     []remote.Check
+	provider remote.Provider
+	repoPath string
+	pr       *remote.PullRequest
+	files    []remote.ChangedFile
+	reviews  []remote.Review
+	comments []remote.Comment
+	checks   []remote.Check
 
-	mode       prViewMode // files, conversation, checks
+	mode prViewMode // files, conversation, checks
 }
 
 type prViewMode int
@@ -44,9 +44,8 @@ const (
 // NewPRDetailView creates a new PR detail view
 func NewPRDetailView(app *layout.App, provider remote.Provider, repoPath string, pr *remote.PullRequest) *PRDetailView {
 	v := &PRDetailView{
-		Box:         tview.NewBox(),
 		fileTree:    components.NewTree(),
-		contentView: tview.NewTextView(),
+		contentView: core.NewTextView(),
 		app:         app,
 		provider:    provider,
 		repoPath:    repoPath,
@@ -59,13 +58,11 @@ func NewPRDetailView(app *layout.App, provider remote.Provider, repoPath string,
 
 func (v *PRDetailView) setup() {
 	v.Box.SetBackgroundColor(theme.Bg())
-	theme.Register(v.Box)
 
 	// Configure content view
 	v.contentView.SetDynamicColors(true)
 	v.contentView.SetWordWrap(false)
 	v.contentView.SetBackgroundColor(theme.Bg())
-	theme.Register(v.contentView)
 
 	// Configure tree
 	v.fileTree.SetShowLines(true).
@@ -350,22 +347,23 @@ func (v *PRDetailView) renderFileDiff(file *remote.ChangedFile) {
 				text.WriteString("\n")
 				continue
 			}
+			escaped := strings.ReplaceAll(line, "[", "[[]")
 
 			switch line[0] {
 			case '+':
-				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), tview.Escape(line)))
+				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), escaped))
 			case '-':
-				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), tview.Escape(line)))
+				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), escaped))
 			case '@':
-				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), tview.Escape(line)))
+				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), escaped))
 			default:
-				text.WriteString(tview.Escape(line) + "\n")
+				text.WriteString(escaped + "\n")
 			}
 		}
 	}
 
 	v.contentView.SetText(text.String())
-	v.contentView.ScrollToBeginning()
+	v.contentView.ScrollTo(0, 0)
 }
 
 func (v *PRDetailView) renderReview(review *remote.Review) {
@@ -384,11 +382,11 @@ func (v *PRDetailView) renderReview(review *remote.Review) {
 	text.WriteString(fmt.Sprintf("[%s]%s[-]\n\n", theme.TagFgDim(), formatTimeAgo(review.CreatedAt)))
 
 	if review.Body != "" {
-		text.WriteString(tview.Escape(review.Body))
+		text.WriteString(strings.ReplaceAll(review.Body, "[", "[[]"))
 	}
 
 	v.contentView.SetText(text.String())
-	v.contentView.ScrollToBeginning()
+	v.contentView.ScrollTo(0, 0)
 }
 
 func (v *PRDetailView) renderComment(comment *remote.Comment) {
@@ -408,22 +406,23 @@ func (v *PRDetailView) renderComment(comment *remote.Comment) {
 			if len(line) == 0 {
 				continue
 			}
+			escaped := strings.ReplaceAll(line, "[", "[[]")
 			switch line[0] {
 			case '+':
-				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), tview.Escape(line)))
+				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), escaped))
 			case '-':
-				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), tview.Escape(line)))
+				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagError(), escaped))
 			default:
-				text.WriteString(tview.Escape(line) + "\n")
+				text.WriteString(escaped + "\n")
 			}
 		}
 		text.WriteString("\n")
 	}
 
-	text.WriteString(tview.Escape(comment.Body))
+	text.WriteString(strings.ReplaceAll(comment.Body, "[", "[[]"))
 
 	v.contentView.SetText(text.String())
-	v.contentView.ScrollToBeginning()
+	v.contentView.ScrollTo(0, 0)
 }
 
 func (v *PRDetailView) renderCheck(check *remote.Check) {
@@ -456,7 +455,7 @@ func (v *PRDetailView) renderCheck(check *remote.Check) {
 	}
 
 	v.contentView.SetText(text.String())
-	v.contentView.ScrollToBeginning()
+	v.contentView.ScrollTo(0, 0)
 }
 
 func (v *PRDetailView) submitReview(state remote.ReviewState) {
@@ -527,7 +526,7 @@ func (v *PRDetailView) setMode(mode prViewMode) {
 
 // Draw renders the view
 func (v *PRDetailView) Draw(screen tcell.Screen) {
-	v.Box.DrawForSubclass(screen, v)
+	v.Box.DrawForSubclass(screen)
 	x, y, width, height := v.GetInnerRect()
 
 	if width <= 0 || height <= 0 {
@@ -538,70 +537,54 @@ func (v *PRDetailView) Draw(screen tcell.Screen) {
 	v.split.Draw(screen)
 }
 
-// tview.Primitive delegation
+// core.Widget interface
 
 func (v *PRDetailView) GetRect() (int, int, int, int) { return v.Box.GetRect() }
 func (v *PRDetailView) SetRect(x, y, w, h int)        { v.Box.SetRect(x, y, w, h) }
-func (v *PRDetailView) Focus(d func(tview.Primitive)) { v.Box.Focus(d) }
 func (v *PRDetailView) Blur()                         { v.Box.Blur() }
 func (v *PRDetailView) HasFocus() bool                { return v.Box.HasFocus() }
 
-func (v *PRDetailView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.Box.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
-		if handler := v.split.MouseHandler(); handler != nil {
-			return handler(action, event, setFocus)
-		}
-		return false, nil
-	})
-}
+func (v *PRDetailView) HandleKey(event *tcell.EventKey) bool {
+	if event.Key() == tcell.KeyEscape {
+		v.app.Pages().Pop()
+		return true
+	}
 
-func (v *PRDetailView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
-
-func (v *PRDetailView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.Box.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if event.Key() == tcell.KeyEscape {
+	switch event.Key() {
+	case tcell.KeyRune:
+		switch event.Rune() {
+		case '1':
+			v.setMode(prModeFiles)
+			return true
+		case '2':
+			v.setMode(prModeConversation)
+			return true
+		case '3':
+			v.setMode(prModeChecks)
+			return true
+		case 'a':
+			v.submitReview(remote.ReviewApproved)
+			return true
+		case 'x':
+			v.submitReview(remote.ReviewChangesRequested)
+			return true
+		case 'c':
+			v.addComment()
+			return true
+		case 'm':
+			v.mergePR()
+			return true
+		case 'o':
+			openURL(v.pr.URL)
+			return true
+		case 'q':
 			v.app.Pages().Pop()
-			return
+			return true
 		}
+	}
 
-		switch event.Key() {
-		case tcell.KeyRune:
-			switch event.Rune() {
-			case '1':
-				v.setMode(prModeFiles)
-				return
-			case '2':
-				v.setMode(prModeConversation)
-				return
-			case '3':
-				v.setMode(prModeChecks)
-				return
-			case 'a':
-				v.submitReview(remote.ReviewApproved)
-				return
-			case 'x':
-				v.submitReview(remote.ReviewChangesRequested)
-				return
-			case 'c':
-				v.addComment()
-				return
-			case 'm':
-				v.mergePR()
-				return
-			case 'o':
-				openURL(v.pr.URL)
-				return
-			case 'q':
-				v.app.Pages().Pop()
-				return
-			}
-		}
-
-		// Pass to tree for navigation
-		if handler := v.fileTree.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	// Pass to tree for navigation
+	return v.fileTree.HandleKey(event)
 }
 
 func truncateString(s string, maxLen int) string {

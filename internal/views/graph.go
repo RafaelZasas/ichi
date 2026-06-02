@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 
-	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
+	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/core"
+	"github.com/atterpac/dado/input"
+	"github.com/atterpac/dado/layout"
+	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/gxt/internal/app"
 	"github.com/atterpac/gxt/internal/git"
@@ -48,11 +48,11 @@ func PreloadGraph(repo *git.Repository) (*PreloadedGraph, error) {
 
 // GraphView displays the commit graph.
 type GraphView struct {
-	flex        *tview.Flex
+	flex        *core.Flex
 	split       *components.Split
 	graphPanel  *components.Panel
 	gitGraph    *components.GitGraph
-	detailView  *tview.TextView
+	detailView  *core.TextView
 	repo        *git.Repository
 	app         *layout.App
 	actions     *input.ActionRegistry
@@ -69,9 +69,9 @@ type GraphView struct {
 // NewGraphView creates a new graph view.
 func NewGraphView(app *layout.App, repo *git.Repository) *GraphView {
 	v := &GraphView{
-		flex:       tview.NewFlex(),
+		flex:       core.NewFlex(),
 		gitGraph:   components.NewGitGraph(),
-		detailView: tview.NewTextView(),
+		detailView: core.NewTextView(),
 		repo:       repo,
 		app:        app,
 	}
@@ -90,8 +90,6 @@ func (v *GraphView) setup() {
 
 	// Configure detail view
 	v.detailView.SetDynamicColors(true).SetWordWrap(true)
-	v.detailView.SetBackgroundColor(theme.Bg())
-	theme.Register(v.detailView)
 
 	// Wrap in panels (Required: rounded borders)
 	v.graphPanel = components.NewPanel().
@@ -110,12 +108,10 @@ func (v *GraphView) setup() {
 		SetLeft(v.graphPanel).
 		SetRight(detailPanel)
 
-	v.flex.SetDirection(tview.FlexRow)
-	v.flex.SetBackgroundColor(theme.Bg())
+	v.flex.SetDirection(core.Column)
 	v.flex.AddItem(v.split, 0, 1, true)
-	theme.Register(v.flex)
 
-	// Register actions (search handled separately in InputHandler)
+	// Register actions (search handled separately in HandleKey)
 	v.actions = input.NewActionRegistry().
 		AddKey("select", tcell.KeyEnter, "Details", func() { v.showCommitView(v.gitGraph.GetSelected()) }).
 		AddSimple("diff", 'd', "Diff", v.showDiff).
@@ -181,9 +177,7 @@ func (v *GraphView) Start() {
 	v.refresh()
 }
 
-func (v *GraphView) Stop() {
-	// Cleanup if needed
-}
+func (v *GraphView) Stop() {}
 
 func (v *GraphView) Hints() []components.KeyHint {
 	if v.searchActive {
@@ -924,40 +918,29 @@ func (v *GraphView) prevMatch() {
 	app.ToastInfo(fmt.Sprintf("Match %d/%d", v.searchIndex+1, len(v.searchMatches)))
 }
 
-// tview.Primitive delegation (Required pattern)
+// core.Widget interface
 
-func (v *GraphView) Draw(screen tcell.Screen)       { v.flex.Draw(screen) }
-func (v *GraphView) GetRect() (int, int, int, int)  { return v.flex.GetRect() }
-func (v *GraphView) SetRect(x, y, w, h int)         { v.flex.SetRect(x, y, w, h) }
-func (v *GraphView) Focus(d func(tview.Primitive)) { v.flex.Focus(d) }
-func (v *GraphView) Blur()                          { v.flex.Blur() }
-func (v *GraphView) HasFocus() bool                 { return v.flex.HasFocus() }
+func (v *GraphView) Draw(screen tcell.Screen)      { v.flex.Draw(screen) }
+func (v *GraphView) GetRect() (int, int, int, int) { return v.flex.GetRect() }
+func (v *GraphView) SetRect(x, y, w, h int)        { v.flex.SetRect(x, y, w, h) }
+func (v *GraphView) Blur()                         { v.flex.Blur() }
+func (v *GraphView) HasFocus() bool                { return v.flex.HasFocus() }
 
-func (v *GraphView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return v.flex.MouseHandler()
-}
+func (v *GraphView) HandleKey(event *tcell.EventKey) bool {
+	// When search is active, consume all input
+	if v.searchActive {
+		v.handleSearchInput(event)
+		return true
+	}
 
-func (v *GraphView) PasteHandler() func(string, func(tview.Primitive)) { return nil }
+	// Start search with /
+	if event.Rune() == '/' {
+		v.startSearch()
+		return true
+	}
 
-func (v *GraphView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return v.flex.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		// When search is active, consume all input
-		if v.searchActive {
-			v.handleSearchInput(event)
-			return
-		}
-
-		// Start search with /
-		if event.Rune() == '/' {
-			v.startSearch()
-			return
-		}
-
-		if v.actions.Handle(event) {
-			return
-		}
-		if handler := v.gitGraph.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	})
+	if v.actions.Handle(event) {
+		return true
+	}
+	return v.gitGraph.HandleKey(event)
 }

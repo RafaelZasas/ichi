@@ -1,4 +1,4 @@
-module github.com/atterpac/gxt
+module github.com/atterpac/ichi
 
 go 1.25.2
 

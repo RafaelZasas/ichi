@@ -11,7 +11,7 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/remote"
+	"github.com/atterpac/ichi/internal/remote"
 )
 
 // PRDetailView shows detailed information about a single PR

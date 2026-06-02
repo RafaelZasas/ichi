@@ -3,7 +3,7 @@ package selection
 import (
 	"github.com/atterpac/dado/components"
 
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // Context carries the current view's selection state to command handlers.

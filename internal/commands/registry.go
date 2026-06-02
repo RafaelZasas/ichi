@@ -3,8 +3,8 @@ package commands
 import (
 	"github.com/atterpac/dado/layout"
 
-	"github.com/atterpac/gxt/internal/git"
-	"github.com/atterpac/gxt/internal/selection"
+	"github.com/atterpac/ichi/internal/git"
+	"github.com/atterpac/ichi/internal/selection"
 )
 
 // ArgType represents the type of command argument for completion.

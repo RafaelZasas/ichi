@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/atterpac/gxt/internal/app"
-	"github.com/atterpac/gxt/internal/views"
+	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/views"
 )
 
 func init() {
@@ -34,7 +34,7 @@ func init() {
 
 	Register(&Command{
 		Name:        "q",
-		Description: "Quit gxt",
+		Description: "Quit ichi",
 		Handler:     handleQuit,
 	})
 

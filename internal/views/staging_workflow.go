@@ -14,8 +14,8 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/app"
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // nodeData holds data associated with a tree node

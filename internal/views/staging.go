@@ -9,8 +9,8 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/app"
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // StagingView provides interactive hunk/line staging using dado's DiffViewer.

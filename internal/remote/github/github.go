@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atterpac/gxt/internal/remote"
+	"github.com/atterpac/ichi/internal/remote"
 )
 
 func init() {

@@ -8,8 +8,8 @@ import (
 	"github.com/atterpac/dado/components"
 	"github.com/atterpac/dado/layout"
 
-	"github.com/atterpac/gxt/internal/app"
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // FinderModal provides a command palette / fuzzy finder using dado's modal.

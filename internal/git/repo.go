@@ -387,7 +387,7 @@ func (r *Repository) ListFiles(prefix string) []string {
 			continue
 		}
 		lower := strings.ToLower(line)
-		// Match on the full path (e.g. "cmd/gxt") or the base name (e.g.
+		// Match on the full path (e.g. "cmd/ichi") or the base name (e.g.
 		// "main.go") so a bare file name suggests files in any directory.
 		if prefix == "" ||
 			strings.HasPrefix(lower, prefix) ||
@@ -537,7 +537,7 @@ func (r *Repository) rebaseReword(hash, newMessage string) error {
 	shortHash := strings.TrimSpace(shortHashOut)
 
 	// Create temp file with new commit message
-	tmpFile, err := os.CreateTemp("", "gxt-commit-msg-*")
+	tmpFile, err := os.CreateTemp("", "ichi-commit-msg-*")
 	if err != nil {
 		return fmt.Errorf("cannot create temp file: %w", err)
 	}

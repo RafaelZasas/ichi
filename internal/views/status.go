@@ -13,8 +13,8 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/git"
-	"github.com/atterpac/gxt/internal/selection"
+	"github.com/atterpac/ichi/internal/git"
+	"github.com/atterpac/ichi/internal/selection"
 )
 
 // StatusView displays the working tree status.
@@ -291,13 +291,13 @@ func (v *StatusView) switchPanel() {
 func (v *StatusView) openStagingView() {
 	entry := v.currentBinding().GetSelected()
 
-	os.WriteFile("/tmp/gxt_status_debug.txt", []byte(fmt.Sprintf("openStagingView: focusStaged=%v, entry=%v\n", v.focusStaged.Get(), entry)), 0644)
+	os.WriteFile("/tmp/ichi_status_debug.txt", []byte(fmt.Sprintf("openStagingView: focusStaged=%v, entry=%v\n", v.focusStaged.Get(), entry)), 0644)
 
 	if entry == nil {
 		return
 	}
 
-	os.WriteFile("/tmp/gxt_status_debug2.txt", []byte(fmt.Sprintf("found file: '%s'\n", entry.Path)), 0644)
+	os.WriteFile("/tmp/ichi_status_debug2.txt", []byte(fmt.Sprintf("found file: '%s'\n", entry.Path)), 0644)
 
 	stagingView := NewStagingView(v.app, v.repo, entry.Path, v.focusStaged.Get())
 	v.app.Pages().Push(stagingView)

@@ -12,8 +12,8 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/git"
-	"github.com/atterpac/gxt/internal/selection"
+	"github.com/atterpac/ichi/internal/git"
+	"github.com/atterpac/ichi/internal/selection"
 )
 
 // FileLogView displays commits that affected a specific file.

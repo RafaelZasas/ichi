@@ -270,7 +270,7 @@ func GenerateHunkPatch(file string, hunk *DiffHunk) string {
 	}
 
 	// Debug: write patch to temp file
-	_ = os.WriteFile("/tmp/gxt_debug_patch.txt", []byte(sb.String()), 0644)
+	_ = os.WriteFile("/tmp/ichi_debug_patch.txt", []byte(sb.String()), 0644)
 
 	return sb.String()
 }

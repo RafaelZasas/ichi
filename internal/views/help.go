@@ -33,7 +33,7 @@ func (v *HelpView) setup() {
 	v.content.SetWordWrap(true)
 	v.content.SetBackgroundColor(theme.Bg())
 
-	helpText := `[` + theme.TagAccent() + `::b]gxt - Terminal Git Client[-:-:-]
+	helpText := `[` + theme.TagAccent() + `::b]ichi - Terminal Git Client[-:-:-]
 
 [` + theme.TagAccent() + `]Global Keys[-]
   [` + theme.TagWarning() + `]q[-]       Quit (from root view)
@@ -92,7 +92,7 @@ func (v *HelpView) setup() {
   [` + theme.TagWarning() + `]D[-]       View stash diff
   [` + theme.TagWarning() + `]b[-]       Create branch from stash
 
-[` + theme.TagFgDim() + `]github.com/atterpac/gxt[-]
+[` + theme.TagFgDim() + `]github.com/atterpac/ichi[-]
 `
 
 	v.content.SetText(helpText)

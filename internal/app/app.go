@@ -7,7 +7,7 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // Nerd Font icons for git
@@ -49,7 +49,7 @@ func UpdateStatusBar(statusBar *layout.StatusBar, repo *git.Repository) {
 	statusBar.ClearSections()
 
 	// Set title
-	statusBar.SetTitle("gxt")
+	statusBar.SetTitle("ichi")
 
 	// Connection status (repo path)
 	statusBar.SetConnectionStatus(true, repo.Path())

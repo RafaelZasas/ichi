@@ -13,8 +13,8 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/app"
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // LineSource represents where a resolved line came from.
@@ -419,7 +419,7 @@ func (v *ConflictResolutionView) moveToPrevRegion() {
 
 func (v *ConflictResolutionView) openInEditor() {
 	// Write current resolved content to temp file
-	tmpFile, err := os.CreateTemp("", "gxt-conflict-*.txt")
+	tmpFile, err := os.CreateTemp("", "ichi-conflict-*.txt")
 	if err != nil {
 		ShowErrorModal(v.app, "Error", err.Error())
 		return

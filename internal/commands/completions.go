@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/atterpac/gxt/internal/git"
+	"github.com/atterpac/ichi/internal/git"
 )
 
 // GetCompletions returns completion suggestions for the current input.

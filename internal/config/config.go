@@ -28,7 +28,7 @@ func init() {
 	if err != nil {
 		configDir = os.Getenv("HOME")
 	}
-	configPath = filepath.Join(configDir, "gxt", configFile)
+	configPath = filepath.Join(configDir, "ichi", configFile)
 	load()
 }
 

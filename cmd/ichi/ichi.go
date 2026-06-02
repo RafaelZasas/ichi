@@ -15,17 +15,17 @@ import (
 	"github.com/atterpac/dado/theme"
 	"github.com/atterpac/dado/theme/themes"
 
-	"github.com/atterpac/gxt/internal/app"
-	"github.com/atterpac/gxt/internal/commands"
-	"github.com/atterpac/gxt/internal/config"
-	"github.com/atterpac/gxt/internal/git"
-	"github.com/atterpac/gxt/internal/views"
+	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/commands"
+	"github.com/atterpac/ichi/internal/config"
+	"github.com/atterpac/ichi/internal/git"
+	"github.com/atterpac/ichi/internal/views"
 )
 
 const footerURL = "atterpac.dev"
 
 // ASCII art logo for gxt
-const gxtLogo = `
+const ichiLogo = `
  ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░
 ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
 ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░  ░▒▓█▓▒░
@@ -165,7 +165,7 @@ func main() {
 	})
 
 	// Live auto-complete: as the user types, show the inline ghost-text
-	// suggestion (e.g. ":log cmd/g" suggests ":log cmd/gxt/gxt.go").
+	// suggestion (e.g. ":log cmd/g" suggests ":log cmd/ichi/gxt.go").
 	statusBar.SetOnCommandChange(func(input string) {
 		statusBar.SetSuggestion(commands.GetSuggestion(repo, input))
 	})
@@ -195,7 +195,7 @@ func main() {
 
 func showSplash(ready <-chan struct{}) error {
 	splash := components.NewSplash().
-		SetLogo(gxtLogo).
+		SetLogo(ichiLogo).
 		SetLogoWidth(40).
 		SetLogoHeight(9).
 		SetStatusHeight(1).

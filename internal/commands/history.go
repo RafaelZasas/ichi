@@ -26,7 +26,7 @@ func init() {
 	if err != nil {
 		configDir = os.Getenv("HOME")
 	}
-	historyPath = filepath.Join(configDir, "gxt", historyFile)
+	historyPath = filepath.Join(configDir, "ichi", historyFile)
 
 	// Load history from file
 	loadHistory()

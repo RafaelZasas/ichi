@@ -14,9 +14,9 @@ import (
 	"github.com/atterpac/dado/layout"
 	"github.com/atterpac/dado/theme"
 
-	"github.com/atterpac/gxt/internal/git"
-	"github.com/atterpac/gxt/internal/remote"
-	_ "github.com/atterpac/gxt/internal/remote/github" // Register GitHub provider
+	"github.com/atterpac/ichi/internal/git"
+	"github.com/atterpac/ichi/internal/remote"
+	_ "github.com/atterpac/ichi/internal/remote/github" // Register GitHub provider
 )
 
 // PRListView displays a list of pull requests

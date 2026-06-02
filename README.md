@@ -103,4 +103,4 @@ don't need a direct tie to git or popular naming conventions. So i went with som
 when i type it in the terminal 
 
 
-<img src="assets/shinichi.png" alt="my cat shinichi"
+<img src="assets/shinichi.png" alt="my cat shinichi" width="200" />

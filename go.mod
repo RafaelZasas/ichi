@@ -3,7 +3,7 @@ module github.com/atterpac/ichi
 go 1.25.2
 
 require (
-	github.com/atterpac/dado v0.0.0
+	github.com/atterpac/dado v0.2.1
 	github.com/gdamore/tcell/v2 v2.13.4
 	golang.org/x/image v0.41.0
 )
@@ -17,4 +17,3 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 )
 
-replace github.com/atterpac/dado => ../dado

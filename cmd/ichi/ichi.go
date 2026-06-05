@@ -56,6 +56,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	if extraArgs := flag.Args(); len(extraArgs) > 0 {
+		path := extraArgs[0]
+		if info, err := os.Stat(path); err != nil && !info.IsDir() {
+			fmt.Fprintf(os.Stderr, "Error: Invalid path '%s'\n", path)
+			os.Exit(1)
+		}
+		*repoPath = path
+	}
+
 	// 1. Initialize theme FIRST (Required by dado)
 	// Load saved theme from config, fallback to TokyoNightNight
 	savedTheme := config.GetTheme()

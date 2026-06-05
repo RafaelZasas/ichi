@@ -48,6 +48,7 @@ type StagingWorkflowView struct {
 	fileHunks     map[string][]*git.DiffHunk // path -> hunks
 	focusPanel    int                        // 0=unstaged, 1=staged, 2=preview
 	lastTreePanel int                        // Remember which tree panel (0 or 1) was last focused
+	viewMode      int                        // 0=tree view, 1=files (flat list)
 }
 
 // NewStagingWorkflowView creates a new staging workflow view.
@@ -136,6 +137,12 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 			{Key: "d", Description: "Discard"},
 		}
 	}
+
+	modeHint := "Tree View"
+	if v.viewMode == 1 {
+		modeHint = "Files View"
+	}
+
 	// Tree panel hints
 	hints := []components.KeyHint{
 		{Key: "j/k", Description: "Navigate"},
@@ -144,6 +151,7 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 		{Key: "Space", Description: "Stage/Unstage"},
 		{Key: "d", Description: "Discard"},
 		{Key: "e", Description: "Edit"},
+		{Key: "v", Description: modeHint},
 	}
 	// Show commit/stash only if there are staged files
 	if len(v.stagedFiles) > 0 {
@@ -185,13 +193,23 @@ func (v *StagingWorkflowView) loadFiles() {
 }
 
 func (v *StagingWorkflowView) buildTrees() {
-	// Build unstaged tree
-	unstagedRoot := v.buildTree(v.unstagedFiles, false, "unstaged-root", "Unstaged")
-	v.unstagedTree.SetRoot(unstagedRoot)
-	v.unstagedTree.ExpandAll()
 
-	// Build staged tree
-	stagedRoot := v.buildTree(v.stagedFiles, true, "staged-root", "Staged")
+	var unstagedRoot, stagedRoot *components.TreeNode
+
+	if v.viewMode == 0 {
+		v.unstagedPanel.SetTitle("Unstaged")
+		v.stagedPanel.SetTitle("Staged")
+		unstagedRoot = v.buildTree(v.unstagedFiles, false, "unstaged-root", "Unstaged")
+		stagedRoot = v.buildTree(v.stagedFiles, true, "staged-root", "Staged")
+		v.unstagedTree.ExpandAll()
+	} else {
+		v.unstagedPanel.SetTitle("Unstaged (Files)")
+		v.stagedPanel.SetTitle("Staged (Files)")
+		unstagedRoot = v.buildFlatTree(v.unstagedFiles, false, "unstaged-root", "Unstaged")
+		stagedRoot = v.buildFlatTree(v.stagedFiles, true, "staged-root", "Staged")
+	}
+
+	v.unstagedTree.SetRoot(unstagedRoot)
 	v.stagedTree.SetRoot(stagedRoot)
 	v.stagedTree.ExpandAll()
 
@@ -232,6 +250,26 @@ func (v *StagingWorkflowView) buildTree(files []git.StatusEntry, isStaged bool, 
 		}
 		parent := v.ensureDirNode(root, dirNodes, dir, keyPrefix, isStaged)
 		parent.AddChild(v.buildFileNode(entry, isStaged))
+	}
+
+	return root
+}
+
+func (v *StagingWorkflowView) buildFlatTree(files []git.StatusEntry, isStaged bool, rootID, rootLabel string) *components.TreeNode {
+	root := &components.TreeNode{
+		ID:       rootID,
+		Label:    rootLabel,
+		Expanded: true,
+	}
+
+	keyPrefix := ""
+	if isStaged {
+		keyPrefix = "staged:"
+	}
+
+	for i := range files {
+		entry := &files[i]
+		root.AddChild(v.buildFlatFileNode(entry, isStaged, keyPrefix))
 	}
 
 	return root
@@ -325,6 +363,97 @@ func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged boo
 		Label:    label,
 		Icon:     v.statusIcon(entry),
 		Expanded: true,
+		Data: &nodeData{
+			file:     entry,
+			isFile:   true,
+			isStaged: isStaged,
+		},
+	}
+
+	// Only add hunk children if there are multiple hunks
+	// For single hunks, the file node itself represents the hunk
+	if len(hunks) > 1 {
+		for i, hunk := range hunks {
+			hunkLabel := hunk.Header
+			// Truncate long headers
+			if len(hunkLabel) > 50 {
+				hunkLabel = hunkLabel[:47] + "..."
+			}
+
+			hunkNode := &components.TreeNode{
+				ID:    fmt.Sprintf("%s:hunk:%d", key, i),
+				Label: hunkLabel,
+				Icon:  "~",
+				Data: &nodeData{
+					file:      entry,
+					hunk:      hunk,
+					hunkIndex: i,
+					isFile:    false,
+					isStaged:  isStaged,
+				},
+			}
+			fileNode.AddChild(hunkNode)
+		}
+	}
+
+	return fileNode
+}
+
+func (v *StagingWorkflowView) buildFlatFileNode(
+	entry *git.StatusEntry,
+	isStaged bool,
+	keyPrefix string,
+) *components.TreeNode {
+	// Determine icon based on status
+	icon := "M"
+	if isStaged {
+		if entry.IndexStatus != 0 {
+			icon = entry.IndexStatus.String()
+		}
+	} else {
+		if entry.IsUntracked {
+			icon = "?"
+		} else {
+			icon = entry.WorkStatus.String()
+		}
+	}
+
+	// Get hunks for this file
+	var hunks []*git.DiffHunk
+	if isStaged {
+		diff, err := v.repo.GetStagedFileDiff(entry.Path)
+		if err == nil && diff != "" {
+			files, err := git.ParseDiff(diff)
+			if err == nil && len(files) > 0 {
+				hunks = files[0].Hunks
+			}
+		}
+	} else {
+		if entry.IsUntracked {
+			hunks, _ = v.createSyntheticHunksForUntracked(entry.Path)
+		} else {
+			diff, err := v.repo.GetWorkingFileDiff(entry.Path)
+			if err == nil && diff != "" {
+				files, err := git.ParseDiff(diff)
+				if err == nil && len(files) > 0 {
+					hunks = files[0].Hunks
+				}
+			}
+		}
+	}
+
+	// Use a unique key for each tree
+	key := entry.Path
+	if isStaged {
+		key = "staged:" + entry.Path
+	}
+	v.fileHunks[key] = hunks
+
+	fileNode := &components.TreeNode{
+		ID:       key,
+		Label:    fmt.Sprintf("%s %s", icon, entry.Path),
+		Icon:     v.statusIcon(entry),
+		Expanded: false,
 		Data: &nodeData{
 			file:     entry,
 			isFile:   true,
@@ -950,6 +1079,16 @@ func (v *StagingWorkflowView) HandleKey(event *tcell.EventKey) bool {
 			switch event.Rune() {
 			case ' ':
 				v.stageSelected()
+				return true
+			case 'v':
+				if v.viewMode == 0 {
+					v.viewMode = 1
+				} else {
+					v.viewMode = 0
+				}
+				savedIndex := currentTree.GetSelectedIndex()
+				v.buildTrees()
+				currentTree.SetSelectedIndex(savedIndex)
 				return true
 			case 'd':
 				v.discardSelected()

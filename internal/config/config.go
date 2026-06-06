@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	configFile   = "config.yaml"
-	defaultTheme = "tokyonight-night"
+	configFile             = "config.yaml"
+	defaultTheme           = "tokyonight-night"
+	defaultStagingViewMode = 0 // tree view
+
 )
 
 // configHeader is prepended when ichi writes the config file so a freshly
@@ -29,6 +31,10 @@ type Config struct {
 	// "catppuccin-mocha", "nord", "dracula", "gruvbox-dark", "rosepine".
 	// Run any theme from the command palette to see the full list.
 	Theme string `yaml:"theme"`
+
+	// StagingViewMode controls how staged files are displayed in the staging
+	// panel. 0 for tree view, 1 for flat file list.
+	StagingViewMode int `yaml:"staging_view_mode"`
 }
 
 var (
@@ -68,9 +74,27 @@ func SetTheme(name string) {
 	save()
 }
 
+// GetStagingViewMode returns the current staging view mode (0 for tree view, 1
+// for flat file list).
+func GetStagingViewMode() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	return current.StagingViewMode
+}
+
+// SetStagingViewMode updates the staging view mode and saves config. Valid
+// modes are 0 for tree view and 1 for flat file list.
+func SetStagingViewMode(mode int) {
+	mu.Lock()
+	current.StagingViewMode = mode
+	mu.Unlock()
+	save()
+}
+
 func load() {
 	current = &Config{
-		Theme: defaultTheme,
+		Theme:           defaultTheme,
+		StagingViewMode: defaultStagingViewMode,
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -86,6 +110,10 @@ func load() {
 	// Only apply valid fields
 	if loaded.Theme != "" {
 		current.Theme = loaded.Theme
+	}
+
+	if loaded.StagingViewMode == 0 || loaded.StagingViewMode == 1 {
+		current.StagingViewMode = loaded.StagingViewMode
 	}
 }
 

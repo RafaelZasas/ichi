@@ -15,6 +15,7 @@ import (
 	"github.com/atterpac/dado/theme"
 
 	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/config"
 	"github.com/atterpac/ichi/internal/git"
 )
 
@@ -60,7 +61,8 @@ func NewStagingWorkflowView(app *layout.App, repo *git.Repository) *StagingWorkf
 		repo:         repo,
 		app:          app,
 		fileHunks:    make(map[string][]*git.DiffHunk),
-		focusPanel:   0, // Start with unstaged
+		focusPanel:   0,                           // Start with unstaged
+		viewMode:     config.GetStagingViewMode(), // load user preference
 	}
 	v.setup()
 	return v
@@ -1086,6 +1088,7 @@ func (v *StagingWorkflowView) HandleKey(event *tcell.EventKey) bool {
 				} else {
 					v.viewMode = 0
 				}
+				config.SetStagingViewMode(v.viewMode)
 				savedIndex := currentTree.GetSelectedIndex()
 				v.buildTrees()
 				currentTree.SetSelectedIndex(savedIndex)

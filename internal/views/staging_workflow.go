@@ -81,15 +81,13 @@ func (v *StagingWorkflowView) setup() {
 	v.unstagedTree.SetShowLines(true).
 		SetShowIcons(true).
 		SetIndentSize(2).
-		SetOnHighlight(v.onNodeHighlight).
-		SetOnSelect(v.onNodeSelect)
+		SetOnHighlight(v.onNodeHighlight)
 
 	// Configure staged tree
 	v.stagedTree.SetShowLines(true).
 		SetShowIcons(true).
 		SetIndentSize(2).
-		SetOnHighlight(v.onNodeHighlight).
-		SetOnSelect(v.onNodeSelect)
+		SetOnHighlight(v.onNodeHighlight)
 
 	// Create panels and store references
 	v.unstagedPanel = components.NewPanel().SetTitle("Unstaged").SetContent(v.unstagedTree)
@@ -198,6 +196,7 @@ func (v *StagingWorkflowView) buildTrees() {
 
 	var unstagedRoot, stagedRoot *components.TreeNode
 
+	// Tree View
 	if v.viewMode == 0 {
 		v.unstagedPanel.SetTitle("Unstaged")
 		v.stagedPanel.SetTitle("Staged")
@@ -213,7 +212,7 @@ func (v *StagingWorkflowView) buildTrees() {
 
 	v.unstagedTree.SetRoot(unstagedRoot)
 	v.stagedTree.SetRoot(stagedRoot)
-	v.stagedTree.ExpandAll()
+	// v.stagedTree.ExpandAll()
 
 	// Trigger initial preview from the appropriate tree
 	if v.focusPanel == 0 {
@@ -1065,6 +1064,33 @@ func (v *StagingWorkflowView) HandleKey(event *tcell.EventKey) bool {
 		}
 		return true
 	}
+	// move to the pane on the right
+	if event.Key() == tcell.KeyCtrlM {
+		if v.focusPanel == 0 || v.focusPanel == 1 {
+			v.lastTreePanel = v.focusPanel
+			v.focusPanel = 2
+			v.updateFocusState()
+			return true
+		}
+	}
+
+	// move to the pane on the left
+	if event.Key() == tcell.KeyCtrlN {
+		if v.focusPanel == 2 {
+			v.focusPanel = v.lastTreePanel
+			v.updateFocusState()
+			return true
+		}
+	}
+
+	// Move to the pane below
+	if event.Key() == tcell.KeyCtrlB {
+		if v.focusPanel == 0 {
+			v.focusPanel = 1
+			v.updateFocusState()
+			return true
+		}
+	}
 
 	// Get current tree based on focus
 	var currentTree *components.Tree
@@ -1077,6 +1103,14 @@ func (v *StagingWorkflowView) HandleKey(event *tcell.EventKey) bool {
 	// Handle our custom keys (only when tree has focus)
 	if v.focusPanel == 0 || v.focusPanel == 1 {
 		switch event.Key() {
+
+		case tcell.KeyEnter:
+			if currentTree != nil {
+				// proxy for the default toggle key which is bound to 'o'
+				oEvent := tcell.NewEventKey(tcell.KeyRune, 'o', tcell.ModNone)
+				currentTree.HandleKey(oEvent)
+			}
+
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case ' ':

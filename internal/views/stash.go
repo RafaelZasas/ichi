@@ -313,7 +313,7 @@ func (v *StashDiffView) renderDiff(diff string) {
 
 	for _, line := range strings.Split(diff, "\n") {
 		v.content = append(v.content, line)
-		escaped := strings.ReplaceAll(line, "[", "[[]")
+		escaped := core.EscapeMarkup(line)
 
 		switch {
 		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):

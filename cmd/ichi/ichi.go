@@ -191,8 +191,10 @@ func main() {
 			app.ToastError(err.Error())
 		}
 		app.UpdateStatusBar(statusBar, repo)
-		// If a new view was pushed, focus it directly
-		// Otherwise restore previous focus and refresh the current view
+		// A command-opened modal focuses itself; don't steal focus back.
+		if application.Pages().CurrentIsModal() {
+			return
+		}
 		if application.Pages().StackDepth() > depthBefore {
 			if current := application.Pages().Current(); current != nil {
 				if w, ok := current.(core.Widget); ok {
@@ -344,6 +346,11 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 		// Command palette (Ctrl+P or Ctrl+K)
 		case event.Key() == tcell.KeyCtrlP || event.Key() == tcell.KeyCtrlK:
 			views.ShowFinder(app, repo, statusBar)
+			return nil
+
+		// Repo switcher (Ctrl+R)
+		case event.Key() == tcell.KeyCtrlR:
+			views.ShowRepoSwitcher(app, repo, statusBar)
 			return nil
 
 		// Git-specific global keys (only from root/graph view to avoid conflicts)

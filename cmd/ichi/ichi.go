@@ -149,6 +149,7 @@ func main() {
 
 	// Initialize toast notifications
 	app.InitToasts()
+	app.InstallToastOverlay(application)
 
 	// 6. Set up command mode callbacks
 	cmdCtx := &commands.Context{

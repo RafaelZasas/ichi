@@ -2,6 +2,8 @@ package app
 
 import (
 	"github.com/atterpac/dado/components"
+	"github.com/atterpac/dado/layout"
+	"github.com/gdamore/tcell/v2"
 )
 
 // Global toast manager instance
@@ -46,4 +48,17 @@ func ToastInfo(message string) {
 	if toastManager != nil {
 		toastManager.Info(message)
 	}
+}
+
+// InstallToastOverlay paints toasts on top of every frame.
+// Must be called once after InitToasts and after layout.NewApp.
+// Conflicts with layout.AppConfig.Debug=true (debug toolbar uses the same hook).
+func InstallToastOverlay(application *layout.App) {
+	application.GetApp().SetAfterDrawFunc(func(screen tcell.Screen) {
+		if toastManager == nil {
+			return
+		}
+		w, h := screen.Size()
+		toastManager.Draw(screen, w, h)
+	})
 }

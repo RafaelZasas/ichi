@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/atterpac/ichi/internal/app"
+	"github.com/atterpac/ichi/internal/config"
 	"github.com/atterpac/ichi/internal/views"
 )
 
@@ -24,6 +25,15 @@ func init() {
 		Description: "Show commits for file",
 		Args:        []ArgSpec{{Name: "file", Type: ArgTypeFile, Required: true}},
 		Handler:     handleFileLog,
+	})
+
+	// Repo switching
+	Register(&Command{
+		Name:        "repo",
+		Aliases:     []string{"r"},
+		Description: "Switch repository (no arg opens switcher, 'new' adds one)",
+		Args:        []ArgSpec{{Name: "alias", Type: ArgTypeString, Required: false}},
+		Handler:     handleRepo,
 	})
 
 	// Vim-style commands
@@ -162,6 +172,26 @@ func handleFileLog(ctx *Context, args []string) error {
 	fileLogView := views.NewFileLogView(ctx.App, ctx.Repo, args[0])
 	ctx.App.Pages().Push(fileLogView)
 	ctx.App.Crumbs().SetPath([]string{"History", args[0]})
+	return nil
+}
+
+func handleRepo(ctx *Context, args []string) error {
+	if len(args) == 0 {
+		views.ShowRepoSwitcher(ctx.App, ctx.Repo, ctx.StatusBar)
+		return nil
+	}
+	if args[0] == "new" {
+		views.ShowNewRepoForm(ctx.App, ctx.Repo, ctx.StatusBar)
+		return nil
+	}
+	r, ok := config.FindRepo(args[0])
+	if !ok {
+		return fmt.Errorf("repo: no saved repository named %q", args[0])
+	}
+	if err := views.SwitchRepo(ctx.App, ctx.Repo, ctx.StatusBar, r.Path); err != nil {
+		return fmt.Errorf("repo: %w", err)
+	}
+	app.ToastSuccess("Switched to " + r.Name)
 	return nil
 }
 

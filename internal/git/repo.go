@@ -37,6 +37,23 @@ func (r *Repository) Path() string {
 	return r.path
 }
 
+// SetPath re-points this repository at a different working tree, validating
+// that the new path is a git repository. Mutating in place lets every holder
+// of this *Repository observe the switch without re-wiring closures.
+func (r *Repository) SetPath(path string) error {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+	cmd := exec.Command("git", "-C", absPath, "rev-parse", "--git-dir")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("not a git repository: %s", absPath)
+	}
+	r.path = absPath
+	r.branch = ""
+	return nil
+}
+
 // CurrentBranch returns the current branch name.
 func (r *Repository) CurrentBranch() string {
 	out, err := r.run("rev-parse", "--abbrev-ref", "HEAD")

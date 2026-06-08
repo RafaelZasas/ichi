@@ -337,6 +337,11 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 			views.ShowFinder(app, repo, statusBar)
 			return nil
 
+		// Repo switcher (Ctrl+R)
+		case event.Key() == tcell.KeyCtrlR:
+			views.ShowRepoSwitcher(app, repo, statusBar)
+			return nil
+
 		// Git-specific global keys (only from root/graph view to avoid conflicts)
 		case event.Rune() == 'b' && app.Pages().StackDepth() <= 1:
 			branchView := views.NewBranchesView(app, repo)

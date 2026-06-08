@@ -108,3 +108,6 @@ Press <kbd>:</kbd> to enter a Git command. The available commands:
 The [command palette](/features/command-palette/)
 (<kbd>Ctrl</kbd>+<kbd>P</kbd>) fuzzy-finds the same actions if you'd rather
 search than type.
+
+You can also define your own commands — and bind them to global keys — with
+[Custom Commands](/features/custom-commands/).

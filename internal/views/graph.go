@@ -86,6 +86,10 @@ func (v *GraphView) setup() {
 		SetShowRefs(true).
 		SetShowHash(true).
 		SetShowAuthor(true).
+		// Debounce the detail fetch: holding j/k scrolls the cursor every step,
+		// but LoadCommit (a synchronous git call) only fires once movement
+		// settles, so rapid navigation stays fluid.
+		SetChangeDebounce(80 * time.Millisecond).
 		SetOnChange(v.updateDetail).
 		SetOnSelect(v.showCommitView)
 

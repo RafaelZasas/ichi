@@ -24,7 +24,11 @@ func ShowConfirmModal(app *layout.App, title, message string, onConfirm func()) 
 			})
 		}).
 		SetOnClose(func() {
-			app.Pages().Pop()
+			// Mirror the submit path: defer the pop so focus restoration doesn't
+			// race inline key handling, which otherwise leaves the app unfocused.
+			go app.QueueUpdateDraw(func() {
+				app.Pages().Pop()
+			})
 		})
 
 	app.ShowModal(modal)
@@ -32,13 +36,14 @@ func ShowConfirmModal(app *layout.App, title, message string, onConfirm func()) 
 
 // ShowErrorModal displays an error message.
 func ShowErrorModal(app *layout.App, title, message string) {
-	modal := components.NewAlertModal(title, "["+theme.TagError()+"]"+message+"[-]").
-		SetOnClose(func() {
-			app.Pages().Pop()
-		}).
-		SetOnSubmit(func() {
+	dismiss := func() {
+		go app.QueueUpdateDraw(func() {
 			app.Pages().Pop()
 		})
+	}
+	modal := components.NewAlertModal(title, "["+theme.TagError()+"]"+message+"[-]").
+		SetOnClose(dismiss).
+		SetOnSubmit(dismiss)
 
 	app.ShowModal(modal)
 }

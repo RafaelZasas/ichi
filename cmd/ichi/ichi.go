@@ -16,6 +16,7 @@ import (
 	"github.com/atterpac/dado/theme/themes"
 
 	"github.com/atterpac/ichi/internal/app"
+	appkg "github.com/atterpac/ichi/internal/app"
 	"github.com/atterpac/ichi/internal/commands"
 	"github.com/atterpac/ichi/internal/config"
 	"github.com/atterpac/ichi/internal/git"
@@ -138,14 +139,40 @@ func main() {
 		OnChange: config.SetTheme,
 	})
 
-	// Initialize toast notifications
+	// Initialize toast notifications and draw them on top of every frame via the
+	// after-draw hook. Without this the toast manager exists but is never
+	// rendered.
 	app.InitToasts()
+	if toasts := app.GetToastManager(); toasts != nil {
+		if coreApp := application.GetApp(); coreApp != nil {
+			coreApp.SetAfterDrawFunc(func(screen tcell.Screen) {
+				w, h := screen.Size()
+				toasts.Draw(screen, w, h)
+			})
+		}
+		// tcell only redraws on input events; tick while toasts are active so
+		// they animate and auto-dismiss on time.
+		go func() {
+			ticker := time.NewTicker(200 * time.Millisecond)
+			defer ticker.Stop()
+			for range ticker.C {
+				if toasts.HasActive() {
+					application.QueueUpdateDraw(func() {})
+				}
+			}
+		}()
+	}
 
 	// 6. Set up command mode callbacks
 	cmdCtx := &commands.Context{
 		App:       application,
 		Repo:      repo,
 		StatusBar: statusBar,
+	}
+
+	// Register user-defined context-aware commands from config.
+	for _, w := range commands.RegisterCustom(config.GetCommands()) {
+		app.ToastError("config: " + w)
 	}
 
 	statusBar.SetOnCommandSubmit(func(text string) {
@@ -201,7 +228,7 @@ func main() {
 	statusBar.SetOnHistoryNext(commands.HistoryNext)
 
 	// 7. Set up global keys
-	application.SetInputCapture(globalInputHandler(application, repo, statusBar, &previousFocus))
+	application.SetInputCapture(globalInputHandler(application, repo, statusBar, cmdCtx, &previousFocus))
 
 	// 8. Push initial view (Graph is the home view)
 	// Wait for preloaded graph data
@@ -253,7 +280,7 @@ func showSplash(ready <-chan struct{}) error {
 	return splashApp.Run()
 }
 
-func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
+func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, cmdCtx *commands.Context, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		// Don't handle keys when in command mode
 		if statusBar.IsCommandMode() {
@@ -264,6 +291,14 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 		// Exception: Escape key should still work to dismiss modals
 		if app.Pages().CurrentIsModal() && event.Key() != tcell.KeyEscape {
 			return event
+		}
+
+		// User-defined key-bound custom commands take precedence over builtins.
+		if cmd := commands.MatchKey(event); cmd != nil {
+			if err := cmd.Handler(cmdCtx, nil); err != nil {
+				appkg.ToastError(err.Error())
+			}
+			return nil
 		}
 
 		switch {

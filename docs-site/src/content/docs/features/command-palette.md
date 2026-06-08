@@ -39,3 +39,10 @@ branch, a stash. See the full command list in
 - Use the **command line** when you already know the *verb* you want to type.
 
 Both reach the same set of Git actions; pick whichever is faster in the moment.
+
+## Going further
+
+You can extend the command line with your own context-aware commands — shell
+templates that expand with the selected commit, branch, or file, render into any
+view, and optionally bind to a global key. See
+[Custom Commands](/features/custom-commands/).

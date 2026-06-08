@@ -43,6 +43,7 @@ export default defineConfig({
 						{ label: 'Conflict Resolution', slug: 'features/conflicts' },
 						{ label: 'GitHub Pull Requests', slug: 'features/pull-requests' },
 						{ label: 'Command Palette', slug: 'features/command-palette' },
+						{ label: 'Custom Commands', slug: 'features/custom-commands' },
 						{ label: 'Themes', slug: 'features/themes' },
 					],
 				},

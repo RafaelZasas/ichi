@@ -138,8 +138,29 @@ func main() {
 		OnChange: config.SetTheme,
 	})
 
-	// Initialize toast notifications
+	// Initialize toast notifications and draw them on top of every frame via the
+	// after-draw hook. Without this the toast manager exists but is never
+	// rendered.
 	app.InitToasts()
+	if toasts := app.GetToastManager(); toasts != nil {
+		if coreApp := application.GetApp(); coreApp != nil {
+			coreApp.SetAfterDrawFunc(func(screen tcell.Screen) {
+				w, h := screen.Size()
+				toasts.Draw(screen, w, h)
+			})
+		}
+		// tcell only redraws on input events; tick while toasts are active so
+		// they animate and auto-dismiss on time.
+		go func() {
+			ticker := time.NewTicker(200 * time.Millisecond)
+			defer ticker.Stop()
+			for range ticker.C {
+				if toasts.HasActive() {
+					application.QueueUpdateDraw(func() {})
+				}
+			}
+		}()
+	}
 
 	// 6. Set up command mode callbacks
 	cmdCtx := &commands.Context{

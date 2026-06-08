@@ -69,7 +69,7 @@ type ConflictResolutionView struct {
 	resolvedLines    []ResolvedLine
 	currentRegionIdx int
 
-	focusPanel  int         // 0=ours, 1=base, 2=theirs, 3=resolved
+	focusPanel  int // 0=ours, 1=base, 2=theirs, 3=resolved
 	displayMode DisplayMode
 }
 
@@ -243,7 +243,7 @@ func (v *ConflictResolutionView) displayCurrentRegion() {
 	// Ours section
 	oursText.WriteString(fmt.Sprintf("[%s]<<<<<<< %s[-]\n", theme.TagError(), region.OursLabel))
 	for _, line := range region.OursLines {
-		escaped := strings.ReplaceAll(line, "[", "[[]")
+		escaped := core.EscapeMarkup(line)
 		oursText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), escaped))
 	}
 
@@ -251,7 +251,7 @@ func (v *ConflictResolutionView) displayCurrentRegion() {
 	if region.HasBase && len(region.BaseLines) > 0 {
 		baseText.WriteString(fmt.Sprintf("[%s]||||||| merged common ancestors[-]\n", theme.TagFgDim()))
 		for _, line := range region.BaseLines {
-			escaped := strings.ReplaceAll(line, "[", "[[]")
+			escaped := core.EscapeMarkup(line)
 			baseText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), escaped))
 		}
 	} else {
@@ -261,7 +261,7 @@ func (v *ConflictResolutionView) displayCurrentRegion() {
 	// Theirs section
 	theirsText.WriteString(fmt.Sprintf("[%s]>>>>>>> %s[-]\n", theme.TagSuccess(), region.TheirsLabel))
 	for _, line := range region.TheirsLines {
-		escaped := strings.ReplaceAll(line, "[", "[[]")
+		escaped := core.EscapeMarkup(line)
 		theirsText.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagFg(), escaped))
 	}
 
@@ -292,7 +292,7 @@ func (v *ConflictResolutionView) updateResolvedPane() {
 		for _, line := range v.resolvedLines {
 			prefix := v.getSourcePrefix(line.Source)
 			color := v.getSourceColor(line.Source)
-			escaped := strings.ReplaceAll(line.Content, "[", "[[]")
+			escaped := core.EscapeMarkup(line.Content)
 			text.WriteString(fmt.Sprintf("[%s][%s][-] %s\n", color, prefix, escaped))
 		}
 	}

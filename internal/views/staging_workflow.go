@@ -460,7 +460,7 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged
 					text.WriteString(fmt.Sprintf("\n[%s]... +%d more lines[-]", theme.TagFgDim(), len(lines)-maxLines))
 					break
 				}
-				escaped := strings.ReplaceAll(line, "[", "[[]")
+				escaped := core.EscapeMarkup(line)
 				text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
 			}
 		}
@@ -483,7 +483,7 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged
 			}
 			text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), hunk.Header))
 			for _, line := range hunk.Lines {
-				escaped := strings.ReplaceAll(line.Content, "[", "[[]")
+				escaped := core.EscapeMarkup(line.Content)
 				switch line.Type {
 				case git.LineAdded:
 					text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
@@ -514,7 +514,7 @@ func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *gi
 	text.WriteString(fmt.Sprintf("[%s]%s[-]\n\n", theme.TagInfo(), hunk.Header))
 
 	for _, line := range hunk.Lines {
-		escaped := strings.ReplaceAll(line.Content, "[", "[[]")
+		escaped := core.EscapeMarkup(line.Content)
 		switch line.Type {
 		case git.LineAdded:
 			text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))

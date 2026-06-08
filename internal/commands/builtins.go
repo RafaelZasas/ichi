@@ -107,6 +107,13 @@ func init() {
 	})
 
 	Register(&Command{
+		Name:        "rename",
+		Aliases:     []string{"reword"},
+		Description: "Reword selected commit message",
+		Handler:     handleRenameCommit,
+	})
+
+	Register(&Command{
 		Name:        "merge",
 		Description: "Merge selected branch",
 		Handler:     handleMerge,
@@ -367,6 +374,27 @@ func handleRebase(ctx *Context, args []string) error {
 			}
 			app.ToastSuccess(fmt.Sprintf("Rebased onto %s", branch))
 		})
+	return nil
+}
+
+func handleRenameCommit(ctx *Context, args []string) error {
+	// Reword the selected commit's message, prefilled with the current one.
+	sel := ctx.Selection()
+	if !sel.HasCommit() {
+		return fmt.Errorf("rename: no commit selected")
+	}
+	commit := sel.Commit
+	views.ShowInputModalWithDefault(ctx.App, "Reword Commit", "Message:", commit.Message, func(newMessage string) {
+		if newMessage == "" || newMessage == commit.Message {
+			return
+		}
+		app.RunAsyncSimple(
+			fmt.Sprintf("Rewording %s...", commit.ShortHash),
+			func(context.Context) error { return ctx.Repo.RenameCommit(commit.Hash, newMessage) },
+			func() { app.ToastSuccess(fmt.Sprintf("Reworded %s", commit.ShortHash)) },
+			func(err error) { views.ShowErrorModal(ctx.App, "Reword Failed", err.Error()) },
+		)
+	})
 	return nil
 }
 

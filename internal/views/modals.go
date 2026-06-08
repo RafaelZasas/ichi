@@ -111,14 +111,20 @@ func ShowInputModalWithDefault(app *layout.App, title, prompt, defaultValue stri
 		SetDismissOnEsc(true)
 
 	textField.SetOnSubmit(func(event *components.SubmitEvent) {
-		app.Pages().Pop()
-		if value, ok := event.Value.(string); ok {
+		// Defer the pop + callback off the input-handling goroutine, mirroring the
+		// confirm modal. Popping inline during key handling races focus restoration
+		// and leaves the underlying view unfocused.
+		value, _ := event.Value.(string)
+		go app.QueueUpdateDraw(func() {
+			app.Pages().Pop()
 			onSubmit(value)
-		}
+		})
 	})
 
 	modal.SetOnClose(func() {
-		app.Pages().Pop()
+		go app.QueueUpdateDraw(func() {
+			app.Pages().Pop()
+		})
 	})
 
 	app.ShowModal(modal)

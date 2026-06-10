@@ -4,7 +4,7 @@
 
 **A keyboard-driven Git client for the terminal.**
 
-Browse history, stage, commit, branch, sync, and manage pull requests — without leaving your shell.
+Browse history, stage, commit, branch, sync, and manage pull requests — without leaving your terminal.
 
 [Documentation](https://ichi.atterpac.dev) · [Installation](#installation) · [Keybindings](#keybindings)
 

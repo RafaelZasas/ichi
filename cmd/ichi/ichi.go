@@ -327,7 +327,8 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 			return nil
 
 		// Go back with Esc (Required by dado)
-		case event.Key() == tcell.KeyEscape:
+		// Optionally go back with vim motion Ctrl-O
+		case event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlO:
 			if app.Pages().CanPop() {
 				app.Pages().Pop()
 				return nil

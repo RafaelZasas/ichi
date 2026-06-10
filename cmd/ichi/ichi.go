@@ -199,17 +199,18 @@ func main() {
 
 	statusBar.SetOnCommandSubmit(func(text string) {
 		statusBar.ExitCommandMode()
+		// Restore pre-command focus first so a modal the command opens restores to
+		// it (not the command bar) on dismiss.
+		if previousFocus != nil {
+			application.SetFocus(previousFocus)
+		}
 		depthBefore := application.Pages().StackDepth()
 		if err := commands.Execute(cmdCtx, text); err != nil {
 			app.ToastError(err.Error())
 		}
 		app.UpdateStatusBar(statusBar, repo)
-		// Route focus to the Pages container so a command-opened modal gets keys.
 		if application.Pages().CurrentIsModal() {
-			if previousFocus != nil {
-				application.SetFocus(previousFocus)
-			}
-			return
+			return // modal keeps the focus set above as its restore target
 		}
 		if application.Pages().StackDepth() > depthBefore {
 			if current := application.Pages().Current(); current != nil {

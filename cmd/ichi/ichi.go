@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof" // registers /debug/pprof handlers on http.DefaultServeMux
 	"os"
 	"time"
 
@@ -37,9 +39,10 @@ const ichiLogo = `
 `
 
 var (
-	repoPath = flag.String("path", ".", "Path to git repository")
-	noSplash = flag.Bool("no-splash", false, "Skip splash screen")
-	showVer  = flag.Bool("version", false, "Print version and exit")
+	repoPath  = flag.String("path", ".", "Path to git repository")
+	noSplash  = flag.Bool("no-splash", false, "Skip splash screen")
+	showVer   = flag.Bool("version", false, "Print version and exit")
+	pprofAddr = flag.String("pprof", "", "If set (e.g. localhost:6060), serve net/http/pprof for live profiling")
 )
 
 // Build info, injected via -ldflags by goreleaser.
@@ -55,6 +58,16 @@ func main() {
 	if *showVer {
 		fmt.Printf("ichi %s (commit %s, built %s)\n", version, commit, date)
 		os.Exit(0)
+	}
+
+	// Live profiling server (opt-in). Pull over HTTP, e.g.:
+	//   go tool pprof http://localhost:6060/debug/pprof/allocs
+	if *pprofAddr != "" {
+		go func() {
+			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "pprof server: %v\n", err)
+			}
+		}()
 	}
 
 	if extraArgs := flag.Args(); len(extraArgs) > 0 {
@@ -191,8 +204,11 @@ func main() {
 			app.ToastError(err.Error())
 		}
 		app.UpdateStatusBar(statusBar, repo)
-		// A command-opened modal focuses itself; don't steal focus back.
+		// Route focus to the Pages container so a command-opened modal gets keys.
 		if application.Pages().CurrentIsModal() {
+			if previousFocus != nil {
+				application.SetFocus(previousFocus)
+			}
 			return
 		}
 		if application.Pages().StackDepth() > depthBefore {

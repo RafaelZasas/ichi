@@ -6,13 +6,13 @@ import (
 
 // StatusEntry represents a file in the working tree status.
 type StatusEntry struct {
-	Path         string
-	OldPath      string     // For renames
-	IndexStatus  FileStatus // Status in index (staged)
-	WorkStatus   FileStatus // Status in working tree (unstaged)
-	IsStaged     bool
-	IsUntracked  bool
-	IsConflict   bool
+	Path        string
+	OldPath     string     // For renames
+	IndexStatus FileStatus // Status in index (staged)
+	WorkStatus  FileStatus // Status in working tree (unstaged)
+	IsStaged    bool
+	IsUntracked bool
+	IsConflict  bool
 }
 
 // Status returns the working tree status.
@@ -93,9 +93,10 @@ func (r *Repository) ConflictFiles() ([]StatusEntry, error) {
 
 // parseStatusV2 parses git status --porcelain=v2 output.
 func parseStatusV2(output string) []StatusEntry {
-	var entries []StatusEntry
+	// Pre-size to line count; SplitSeq avoids Split's intermediate slice alloc.
+	entries := make([]StatusEntry, 0, strings.Count(output, "\n")+1)
 
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if line == "" {
 			continue
 		}
@@ -124,10 +125,10 @@ func parseStatusV2(output string) []StatusEntry {
 		}
 
 		if strings.HasPrefix(line, "u ") {
-			parts := strings.Fields(line)
-			if len(parts) >= 11 {
+			// Path follows the 10th space (avoids a strings.Fields slice alloc).
+			if path := fieldAfter(line, 10); path != "" {
 				entries = append(entries, StatusEntry{
-					Path:        parts[10],
+					Path:        path,
 					IndexStatus: FileConflict,
 					WorkStatus:  FileConflict,
 					IsConflict:  true,
@@ -137,30 +138,31 @@ func parseStatusV2(output string) []StatusEntry {
 		}
 
 		if strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 ") {
-			parts := strings.Fields(line)
-			if len(parts) < 9 {
+			// XY status is the fixed 2-byte field at offset 2.
+			if len(line) < 4 {
 				continue
 			}
-
-			xy := parts[1]
 			entry := StatusEntry{
-				IndexStatus: parseStatusChar(xy[0]),
-				WorkStatus:  parseStatusChar(xy[1]),
+				IndexStatus: parseStatusChar(line[2]),
+				WorkStatus:  parseStatusChar(line[3]),
 			}
 
-			if strings.HasPrefix(line, "2 ") {
+			if line[0] == '2' {
 				// Rename/copy - path is after the score field
 				// Format: 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path><tab><origPath>
 				tabIdx := strings.Index(line, "\t")
 				if tabIdx > 0 {
-					pathPart := line[strings.LastIndex(line[:tabIdx], " ")+1:]
-					entry.Path = pathPart
+					entry.Path = line[strings.LastIndex(line[:tabIdx], " ")+1 : tabIdx]
 					entry.OldPath = line[tabIdx+1:]
-				} else if len(parts) >= 10 {
-					entry.Path = parts[9]
+				} else if p := fieldAfter(line, 9); p != "" {
+					entry.Path = p
 				}
 			} else {
-				entry.Path = parts[8]
+				// Path is everything after the 8th space.
+				entry.Path = fieldAfter(line, 8)
+			}
+			if entry.Path == "" {
+				continue
 			}
 
 			// Determine if staged
@@ -171,6 +173,20 @@ func parseStatusV2(output string) []StatusEntry {
 	}
 
 	return entries
+}
+
+// fieldAfter returns the remainder of line after the nth single space (1-indexed),
+// or "" if there are fewer than n. Slices instead of allocating via strings.Fields.
+func fieldAfter(line string, n int) string {
+	idx := 0
+	for ; n > 0; n-- {
+		sp := strings.IndexByte(line[idx:], ' ')
+		if sp < 0 {
+			return ""
+		}
+		idx += sp + 1
+	}
+	return line[idx:]
 }
 
 // statusV1 is a fallback using the simpler porcelain v1 format.

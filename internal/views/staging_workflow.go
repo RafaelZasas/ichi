@@ -61,11 +61,11 @@ type StagingWorkflowView struct {
 // NewStagingWorkflowView creates a new staging workflow view.
 func NewStagingWorkflowView(app *layout.App, repo *git.Repository) *StagingWorkflowView {
 	v := &StagingWorkflowView{
-		previewText:  core.NewTextView(),
-		unstagedTree: components.NewTree(),
-		stagedTree:   components.NewTree(),
-		repo:         repo,
-		app:          app,
+		previewText:   core.NewTextView(),
+		unstagedTree:  components.NewTree(),
+		stagedTree:    components.NewTree(),
+		repo:          repo,
+		app:           app,
 		fileHunks:     make(map[string][]*git.DiffHunk),
 		focusPanel:    0, // Start with unstaged
 		collapsedDirs: make(map[string]bool),
@@ -271,6 +271,59 @@ func (v *StagingWorkflowView) restoreCollapsed(node *components.TreeNode) {
 // same directory are nested under a shared directory node, so a whole folder
 // can be staged at once.
 func (v *StagingWorkflowView) buildTree(files []git.StatusEntry, isStaged bool, rootID, rootLabel string) *components.TreeNode {
+	// Build leaf nodes (the git-touching part), then group them into dirs.
+	leaves := make([]*components.TreeNode, len(files))
+	for i := range files {
+		leaves[i] = v.buildFileNode(&files[i], isStaged)
+	}
+	return groupFilesIntoTree(rootID, rootLabel, files, leaves, isStaged, v.flatMode)
+}
+
+// dirTreeBuilder arenas dir TreeNode/nodeData values in 64-blocks so a rebuild
+// allocates ~once per 64 nodes. Full blocks are replaced, never resized, so
+// handed-out pointers stay valid.
+type dirTreeBuilder struct {
+	nodeArena []components.TreeNode
+	dataArena []nodeData
+}
+
+func (b *dirTreeBuilder) newNode() *components.TreeNode {
+	if len(b.nodeArena) == cap(b.nodeArena) {
+		b.nodeArena = make([]components.TreeNode, 0, 64)
+	}
+	b.nodeArena = append(b.nodeArena, components.TreeNode{})
+	return &b.nodeArena[len(b.nodeArena)-1]
+}
+
+func (b *dirTreeBuilder) newData() *nodeData {
+	if len(b.dataArena) == cap(b.dataArena) {
+		b.dataArena = make([]nodeData, 0, 64)
+	}
+	b.dataArena = append(b.dataArena, nodeData{})
+	return &b.dataArena[len(b.dataArena)-1]
+}
+
+// dirOf returns the dir part of a git path ("a/b/c.go" -> "a/b", "c.go" -> "").
+// Slices instead of filepath.Dir (which allocates); git paths are already clean.
+func dirOf(path string) string {
+	if idx := strings.LastIndexByte(path, '/'); idx >= 0 {
+		return path[:idx]
+	}
+	return ""
+}
+
+// baseOf returns the final path element ("a/b" -> "b", "a" -> "a") by slicing.
+func baseOf(path string) string {
+	if idx := strings.LastIndexByte(path, '/'); idx >= 0 {
+		return path[idx+1:]
+	}
+	return path
+}
+
+// groupFilesIntoTree nests leaf nodes under shared directory nodes (compacting
+// single-child chains); leaves[i] is the node for files[i]. Kept free of git I/O
+// so it can be benchmarked in isolation.
+func groupFilesIntoTree(rootID, rootLabel string, files []git.StatusEntry, leaves []*components.TreeNode, isStaged, flatMode bool) *components.TreeNode {
 	root := &components.TreeNode{
 		ID:       rootID,
 		Label:    rootLabel,
@@ -282,22 +335,23 @@ func (v *StagingWorkflowView) buildTree(files []git.StatusEntry, isStaged bool, 
 		keyPrefix = "staged:"
 	}
 
-	dirNodes := map[string]*components.TreeNode{"": root}
-
-	for i := range files {
-		entry := &files[i]
-		if v.flatMode {
+	if flatMode {
+		for i := range files {
 			// Flat list: every file hangs directly off the root, no directory
 			// nesting and (see buildFileNode) no per-hunk children.
-			root.AddChild(v.buildFileNode(entry, isStaged))
-			continue
+			root.AddChild(leaves[i])
 		}
-		dir := filepath.Dir(entry.Path)
-		if dir == "." {
-			dir = ""
-		}
-		parent := v.ensureDirNode(root, dirNodes, dir, keyPrefix, isStaged)
-		parent.AddChild(v.buildFileNode(entry, isStaged))
+		return root
+	}
+
+	b := &dirTreeBuilder{}
+	// One map entry per distinct directory (plus root); files is an upper bound.
+	dirNodes := make(map[string]*components.TreeNode, len(files)+1)
+	dirNodes[""] = root
+
+	for i := range files {
+		parent := ensureDirNode(b, dirNodes, dirOf(files[i].Path), keyPrefix, isStaged)
+		parent.AddChild(leaves[i])
 	}
 
 	// Collapse chains of single-child directories into one node (e.g.
@@ -338,28 +392,25 @@ func compactDirChain(node *components.TreeNode) {
 
 // ensureDirNode returns the tree node for dir, creating it (and any missing
 // ancestor directory nodes) on demand.
-func (v *StagingWorkflowView) ensureDirNode(root *components.TreeNode, dirNodes map[string]*components.TreeNode, dir, keyPrefix string, isStaged bool) *components.TreeNode {
+func ensureDirNode(b *dirTreeBuilder, dirNodes map[string]*components.TreeNode, dir, keyPrefix string, isStaged bool) *components.TreeNode {
 	if node, ok := dirNodes[dir]; ok {
 		return node
 	}
 
-	parentDir := filepath.Dir(dir)
-	if parentDir == "." || parentDir == dir {
-		parentDir = ""
-	}
-	parent := v.ensureDirNode(root, dirNodes, parentDir, keyPrefix, isStaged)
+	parent := ensureDirNode(b, dirNodes, dirOf(dir), keyPrefix, isStaged)
 
-	node := &components.TreeNode{
-		ID:       keyPrefix + "dir:" + dir,
-		Label:    filepath.Base(dir),
-		Icon:     "/",
-		Expanded: true,
-		Data: &nodeData{
-			isDir:    true,
-			dirPath:  dir,
-			isStaged: isStaged,
-		},
-	}
+	data := b.newData()
+	data.isDir = true
+	data.dirPath = dir
+	data.isStaged = isStaged
+
+	node := b.newNode()
+	node.ID = keyPrefix + "dir:" + dir
+	node.Label = baseOf(dir)
+	node.Icon = "/"
+	node.Expanded = true
+	node.Data = data
+
 	parent.AddChild(node)
 	dirNodes[dir] = node
 	return node

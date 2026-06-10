@@ -3,7 +3,7 @@ module github.com/atterpac/ichi
 go 1.25.2
 
 require (
-	github.com/atterpac/dado v0.2.5
+	github.com/atterpac/dado v0.2.7
 	github.com/gdamore/tcell/v2 v2.13.4
 	gopkg.in/yaml.v3 v3.0.1
 )

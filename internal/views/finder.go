@@ -57,16 +57,19 @@ func (m *FinderModal) setup() {
 	})
 
 	m.finder.SetOnSelect(func(item components.FinderItem) {
-		m.app.Pages().Pop()
-		if item.Data != nil {
-			if action, ok := item.Data.(func()); ok {
-				action()
+		// Defer pop so it doesn't race focus restoration during key handling.
+		go m.app.QueueUpdateDraw(func() {
+			m.app.Pages().Pop()
+			if item.Data != nil {
+				if action, ok := item.Data.(func()); ok {
+					action()
+				}
 			}
-		}
+		})
 	})
 
 	m.finder.SetOnCancel(func() {
-		m.app.Pages().Pop()
+		go m.app.QueueUpdateDraw(func() { m.app.Pages().Pop() })
 	})
 
 	m.Modal.SetContent(m.finder)
@@ -76,7 +79,7 @@ func (m *FinderModal) setup() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 	m.Modal.SetOnCancel(func() {
-		m.app.Pages().Pop()
+		go m.app.QueueUpdateDraw(func() { m.app.Pages().Pop() })
 	})
 }
 

@@ -94,63 +94,62 @@ func (r *Repository) LoadGraph(limit int) (*components.GitGraphData, error) {
 	return graph, nil
 }
 
-// populateAheadBehind fetches ahead/behind counts for commits with local branches.
+// populateAheadBehind sets ahead/behind counts for local branch tips. One
+// for-each-ref resolves all branches, vs spawning a rev-list process per branch.
 func (r *Repository) populateAheadBehind(graph *components.GitGraphData) {
-	type branchQuery struct {
-		commit      *components.GitCommit
-		localBranch string
-		hasRemote   bool
+	// %00 (NUL) delimits name from track; nobracket yields "ahead 2, behind 1".
+	out, err := r.run("for-each-ref",
+		"--format=%(refname:short)%00%(upstream:track,nobracket)", "refs/heads/")
+	if err != nil {
+		return
 	}
 
-	var queries []branchQuery
+	type aheadBehind struct{ ahead, behind int }
+	counts := make(map[string]aheadBehind)
+	for line := range strings.SplitSeq(out, "\n") {
+		if line == "" {
+			continue
+		}
+		name, track, ok := strings.Cut(line, "\x00")
+		if !ok {
+			continue
+		}
+		a, b := parseTrack(track)
+		counts[name] = aheadBehind{a, b}
+	}
+
 	for _, commit := range graph.Commits {
 		if len(commit.Refs) == 0 {
 			continue
 		}
-
 		var localBranch string
-		hasRemote := false
 		for _, ref := range commit.Refs {
-			if strings.HasPrefix(ref, "origin/") {
-				hasRemote = true
-			} else if ref != "HEAD" && localBranch == "" {
+			if ref != "HEAD" && !strings.HasPrefix(ref, "origin/") {
 				localBranch = ref
+				break
 			}
 		}
-
 		if localBranch == "" {
 			continue
 		}
-
-		queries = append(queries, branchQuery{commit, localBranch, hasRemote})
+		if c, ok := counts[localBranch]; ok {
+			commit.Ahead = c.ahead
+			commit.Behind = c.behind
+		}
 	}
+}
 
-	if len(queries) == 0 {
-		return
+// parseTrack parses git's upstream:track output, e.g. "ahead 2, behind 1".
+// "", "gone", and in-sync all yield 0, 0.
+func parseTrack(s string) (ahead, behind int) {
+	for _, part := range strings.Split(s, ", ") {
+		if n, ok := strings.CutPrefix(part, "ahead "); ok {
+			ahead, _ = strconv.Atoi(n)
+		} else if n, ok := strings.CutPrefix(part, "behind "); ok {
+			behind, _ = strconv.Atoi(n)
+		}
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(queries))
-	for _, q := range queries {
-		go func(q branchQuery) {
-			defer wg.Done()
-			upstream := "origin/" + q.localBranch
-			out, err := r.run("rev-list", "--left-right", "--count", q.localBranch+"..."+upstream)
-			if err != nil {
-				if q.hasRemote {
-					q.commit.Ahead = 0
-					q.commit.Behind = 0
-				}
-				return
-			}
-			parts := strings.Fields(strings.TrimSpace(out))
-			if len(parts) >= 2 {
-				q.commit.Ahead, _ = strconv.Atoi(parts[0])
-				q.commit.Behind, _ = strconv.Atoi(parts[1])
-			}
-		}(q)
-	}
-	wg.Wait()
+	return
 }
 
 // LoadCommit loads detailed information about a single commit.
@@ -237,9 +236,18 @@ func (r *Repository) LoadCommit(hash string) (*CommitDetail, error) {
 		var filesOut, numstatOut, statsOut string
 		var innerWg sync.WaitGroup
 		innerWg.Add(3)
-		go func() { defer innerWg.Done(); statsOut, _ = r.run("show", "-m", "--first-parent", "--stat", "--format=", hash) }()
-		go func() { defer innerWg.Done(); filesOut, _ = r.run("show", "-m", "--first-parent", "--name-status", "--format=", hash) }()
-		go func() { defer innerWg.Done(); numstatOut, _ = r.run("show", "-m", "--first-parent", "--numstat", "--format=", hash) }()
+		go func() {
+			defer innerWg.Done()
+			statsOut, _ = r.run("show", "-m", "--first-parent", "--stat", "--format=", hash)
+		}()
+		go func() {
+			defer innerWg.Done()
+			filesOut, _ = r.run("show", "-m", "--first-parent", "--name-status", "--format=", hash)
+		}()
+		go func() {
+			defer innerWg.Done()
+			numstatOut, _ = r.run("show", "-m", "--first-parent", "--numstat", "--format=", hash)
+		}()
 		innerWg.Wait()
 		stats = parseStats(statsOut)
 		files = parseChangedFiles(filesOut)
@@ -319,10 +327,10 @@ type CommitDetail struct {
 
 // GPGSignature contains GPG signature verification info.
 type GPGSignature struct {
-	Signed   bool
-	Valid    bool
-	KeyID    string
-	Signer   string
+	Signed     bool
+	Valid      bool
+	KeyID      string
+	Signer     string
 	TrustLevel string
 }
 

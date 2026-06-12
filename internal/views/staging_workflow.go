@@ -50,6 +50,14 @@ type StagingWorkflowView struct {
 	focusPanel    int                        // 0=unstaged, 1=staged, 2=preview
 	lastTreePanel int                        // Remember which tree panel (0 or 1) was last focused
 	viewMode      int                        // 0=tree view, 1=files (flat list)
+
+	// collapsedDirs tracks directory node IDs the user has collapsed so the
+	// state survives tree rebuilds (e.g. after staging a file).
+	collapsedDirs map[string]bool
+
+	// flatMode renders a flat list of files (no directory grouping, no per-hunk
+	// children) instead of the nested tree. Toggled with 'v'.
+	flatMode bool
 }
 
 // NewStagingWorkflowView creates a new staging workflow view.
@@ -63,6 +71,7 @@ func NewStagingWorkflowView(app *layout.App, repo *git.Repository) *StagingWorkf
 		fileHunks:    make(map[string][]*git.DiffHunk),
 		focusPanel:   0,                           // Start with unstaged
 		viewMode:     config.GetStagingViewMode(), // load user preference
+		collapsedDirs: make(map[string]bool),
 	}
 	v.setup()
 	return v
@@ -81,13 +90,19 @@ func (v *StagingWorkflowView) setup() {
 	v.unstagedTree.SetShowLines(true).
 		SetShowIcons(true).
 		SetIndentSize(2).
-		SetOnHighlight(v.onNodeHighlight)
+		SetOnHighlight(v.onNodeHighlight).
+		SetOnSelect(v.onNodeSelect).
+		SetOnExpand(v.onNodeExpand).
+		SetOnCollapse(v.onNodeCollapse)
 
 	// Configure staged tree
 	v.stagedTree.SetShowLines(true).
 		SetShowIcons(true).
 		SetIndentSize(2).
-		SetOnHighlight(v.onNodeHighlight)
+		SetOnHighlight(v.onNodeHighlight).
+		SetOnSelect(v.onNodeSelect).
+		SetOnExpand(v.onNodeExpand).
+		SetOnCollapse(v.onNodeCollapse)
 
 	// Create panels and store references
 	v.unstagedPanel = components.NewPanel().SetTitle("Unstaged").SetContent(v.unstagedTree)
@@ -151,7 +166,7 @@ func (v *StagingWorkflowView) Hints() []components.KeyHint {
 		{Key: "Space", Description: "Stage/Unstage"},
 		{Key: "d", Description: "Discard"},
 		{Key: "e", Description: "Edit"},
-		{Key: "v", Description: modeHint},
+		{Key: "v", Description: "Tree/List"},
 	}
 	// Show commit/stash only if there are staged files
 	if len(v.stagedFiles) > 0 {
@@ -210,9 +225,26 @@ func (v *StagingWorkflowView) buildTrees() {
 		stagedRoot = v.buildFlatTree(v.stagedFiles, true, "staged-root", "Staged")
 	}
 
+	// Remember cursor positions so they survive the rebuild.
+	unstagedIdx := v.unstagedTree.GetSelectedIndex()
+	stagedIdx := v.stagedTree.GetSelectedIndex()
+
+	// Build unstaged tree
+	unstagedRoot := v.buildTree(v.unstagedFiles, false, "unstaged-root", "Unstaged")
 	v.unstagedTree.SetRoot(unstagedRoot)
+	v.unstagedTree.ExpandAll()
+	v.restoreCollapsed(unstagedRoot)
+	v.unstagedTree.SetRoot(unstagedRoot)
+	v.unstagedTree.SetSelectedIndex(unstagedIdx)
+
+	// Build staged tree
+	stagedRoot := v.buildTree(v.stagedFiles, true, "staged-root", "Staged")
 	v.stagedTree.SetRoot(stagedRoot)
 	// v.stagedTree.ExpandAll()
+	v.stagedTree.ExpandAll()
+	v.restoreCollapsed(stagedRoot)
+	v.stagedTree.SetRoot(stagedRoot)
+	v.stagedTree.SetSelectedIndex(stagedIdx)
 
 	// Trigger initial preview from the appropriate tree
 	if v.focusPanel == 0 {
@@ -226,10 +258,99 @@ func (v *StagingWorkflowView) buildTrees() {
 	}
 }
 
+// toggleFlatMode switches between the nested directory tree and a flat list of
+// files (one combined diff per file, no per-hunk breakdown) and rebuilds.
+func (v *StagingWorkflowView) toggleFlatMode() {
+	v.flatMode = !v.flatMode
+	v.buildTrees()
+}
+
+// onNodeExpand clears any remembered collapsed state for a directory node.
+func (v *StagingWorkflowView) onNodeExpand(node *components.TreeNode) {
+	if node != nil && !node.IsLeaf() {
+		delete(v.collapsedDirs, node.ID)
+	}
+}
+
+// onNodeCollapse records that a directory node was collapsed so it stays
+// collapsed across tree rebuilds.
+func (v *StagingWorkflowView) onNodeCollapse(node *components.TreeNode) {
+	if node != nil && !node.IsLeaf() {
+		v.collapsedDirs[node.ID] = true
+	}
+}
+
+// restoreCollapsed walks the freshly built tree and re-applies the user's
+// remembered collapsed state to matching directory nodes.
+func (v *StagingWorkflowView) restoreCollapsed(node *components.TreeNode) {
+	if node == nil {
+		return
+	}
+	if !node.IsLeaf() && v.collapsedDirs[node.ID] {
+		node.Expanded = false
+	}
+	for _, child := range node.Children {
+		v.restoreCollapsed(child)
+	}
+}
+
 // buildTree builds a directory-grouped tree of the given files. Files in the
 // same directory are nested under a shared directory node, so a whole folder
 // can be staged at once.
 func (v *StagingWorkflowView) buildTree(files []git.StatusEntry, isStaged bool, rootID, rootLabel string) *components.TreeNode {
+	// Build leaf nodes (the git-touching part), then group them into dirs.
+	leaves := make([]*components.TreeNode, len(files))
+	for i := range files {
+		leaves[i] = v.buildFileNode(&files[i], isStaged)
+	}
+	return groupFilesIntoTree(rootID, rootLabel, files, leaves, isStaged, v.flatMode)
+}
+
+// dirTreeBuilder arenas dir TreeNode/nodeData values in 64-blocks so a rebuild
+// allocates ~once per 64 nodes. Full blocks are replaced, never resized, so
+// handed-out pointers stay valid.
+type dirTreeBuilder struct {
+	nodeArena []components.TreeNode
+	dataArena []nodeData
+}
+
+func (b *dirTreeBuilder) newNode() *components.TreeNode {
+	if len(b.nodeArena) == cap(b.nodeArena) {
+		b.nodeArena = make([]components.TreeNode, 0, 64)
+	}
+	b.nodeArena = append(b.nodeArena, components.TreeNode{})
+	return &b.nodeArena[len(b.nodeArena)-1]
+}
+
+func (b *dirTreeBuilder) newData() *nodeData {
+	if len(b.dataArena) == cap(b.dataArena) {
+		b.dataArena = make([]nodeData, 0, 64)
+	}
+	b.dataArena = append(b.dataArena, nodeData{})
+	return &b.dataArena[len(b.dataArena)-1]
+}
+
+// dirOf returns the dir part of a git path ("a/b/c.go" -> "a/b", "c.go" -> "").
+// Slices instead of filepath.Dir (which allocates); git paths are already clean.
+func dirOf(path string) string {
+	if idx := strings.LastIndexByte(path, '/'); idx >= 0 {
+		return path[:idx]
+	}
+	return ""
+}
+
+// baseOf returns the final path element ("a/b" -> "b", "a" -> "a") by slicing.
+func baseOf(path string) string {
+	if idx := strings.LastIndexByte(path, '/'); idx >= 0 {
+		return path[idx+1:]
+	}
+	return path
+}
+
+// groupFilesIntoTree nests leaf nodes under shared directory nodes (compacting
+// single-child chains); leaves[i] is the node for files[i]. Kept free of git I/O
+// so it can be benchmarked in isolation.
+func groupFilesIntoTree(rootID, rootLabel string, files []git.StatusEntry, leaves []*components.TreeNode, isStaged, flatMode bool) *components.TreeNode {
 	root := &components.TreeNode{
 		ID:       rootID,
 		Label:    rootLabel,
@@ -241,16 +362,29 @@ func (v *StagingWorkflowView) buildTree(files []git.StatusEntry, isStaged bool, 
 		keyPrefix = "staged:"
 	}
 
-	dirNodes := map[string]*components.TreeNode{"": root}
+	if flatMode {
+		for i := range files {
+			// Flat list: every file hangs directly off the root, no directory
+			// nesting and (see buildFileNode) no per-hunk children.
+			root.AddChild(leaves[i])
+		}
+		return root
+	}
+
+	b := &dirTreeBuilder{}
+	// One map entry per distinct directory (plus root); files is an upper bound.
+	dirNodes := make(map[string]*components.TreeNode, len(files)+1)
+	dirNodes[""] = root
 
 	for i := range files {
-		entry := &files[i]
-		dir := filepath.Dir(entry.Path)
-		if dir == "." {
-			dir = ""
-		}
-		parent := v.ensureDirNode(root, dirNodes, dir, keyPrefix, isStaged)
-		parent.AddChild(v.buildFileNode(entry, isStaged))
+		parent := ensureDirNode(b, dirNodes, dirOf(files[i].Path), keyPrefix, isStaged)
+		parent.AddChild(leaves[i])
+	}
+
+	// Collapse chains of single-child directories into one node (e.g.
+	// foo -> bar -> file becomes a single "foo/bar" node containing file).
+	for _, child := range root.Children {
+		compactDirChain(child)
 	}
 
 	return root
@@ -276,30 +410,54 @@ func (v *StagingWorkflowView) buildFlatTree(files []git.StatusEntry, isStaged bo
 	return root
 }
 
+// isDirNode reports whether a tree node represents a directory.
+func isDirNode(node *components.TreeNode) bool {
+	d, ok := node.Data.(*nodeData)
+	return ok && d.isDir
+}
+
+// compactDirChain merges a directory node with its only child while that child
+// is itself a directory, joining their labels into a path. The merged node
+// adopts the deepest directory's ID and data so collapse state and staging keep
+// targeting the right path. Files are never merged, so a directory holding a
+// single file still shows that file as a child.
+func compactDirChain(node *components.TreeNode) {
+	if !isDirNode(node) {
+		return
+	}
+	for len(node.Children) == 1 && isDirNode(node.Children[0]) {
+		child := node.Children[0]
+		node.Label = node.Label + "/" + child.Label
+		node.ID = child.ID
+		node.Data = child.Data
+		node.Children = child.Children
+	}
+	for _, child := range node.Children {
+		compactDirChain(child)
+	}
+}
+
 // ensureDirNode returns the tree node for dir, creating it (and any missing
 // ancestor directory nodes) on demand.
-func (v *StagingWorkflowView) ensureDirNode(root *components.TreeNode, dirNodes map[string]*components.TreeNode, dir, keyPrefix string, isStaged bool) *components.TreeNode {
+func ensureDirNode(b *dirTreeBuilder, dirNodes map[string]*components.TreeNode, dir, keyPrefix string, isStaged bool) *components.TreeNode {
 	if node, ok := dirNodes[dir]; ok {
 		return node
 	}
 
-	parentDir := filepath.Dir(dir)
-	if parentDir == "." || parentDir == dir {
-		parentDir = ""
-	}
-	parent := v.ensureDirNode(root, dirNodes, parentDir, keyPrefix, isStaged)
+	parent := ensureDirNode(b, dirNodes, dirOf(dir), keyPrefix, isStaged)
 
-	node := &components.TreeNode{
-		ID:       keyPrefix + "dir:" + dir,
-		Label:    filepath.Base(dir),
-		Icon:     "/",
-		Expanded: true,
-		Data: &nodeData{
-			isDir:    true,
-			dirPath:  dir,
-			isStaged: isStaged,
-		},
-	}
+	data := b.newData()
+	data.isDir = true
+	data.dirPath = dir
+	data.isStaged = isStaged
+
+	node := b.newNode()
+	node.ID = keyPrefix + "dir:" + dir
+	node.Label = baseOf(dir)
+	node.Icon = "/"
+	node.Expanded = true
+	node.Data = data
+
 	parent.AddChild(node)
 	dirNodes[dir] = node
 	return node
@@ -351,11 +509,15 @@ func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged boo
 	}
 	v.fileHunks[key] = hunks
 
-	// Create file node. The directory is conveyed by the tree hierarchy, so
-	// the label only needs the file's base name.
+	// Create file node. In tree mode the directory is conveyed by the tree
+	// hierarchy, so the label only needs the file's base name; in flat mode
+	// there is no hierarchy, so show the full path.
 	name := filepath.Base(entry.Path)
+	if v.flatMode {
+		name = entry.Path
+	}
 	label := fmt.Sprintf("%s %s", icon, name)
-	if len(hunks) > 1 {
+	if len(hunks) > 1 && !v.flatMode {
 		label = fmt.Sprintf("%s %s (%d hunks)", icon, name, len(hunks))
 	}
 
@@ -371,9 +533,10 @@ func (v *StagingWorkflowView) buildFileNode(entry *git.StatusEntry, isStaged boo
 		},
 	}
 
-	// Only add hunk children if there are multiple hunks
-	// For single hunks, the file node itself represents the hunk
-	if len(hunks) > 1 {
+	// Only add hunk children if there are multiple hunks (and not in flat mode,
+	// which intentionally shows one entry per file with a single combined diff).
+	// For single hunks, the file node itself represents the hunk.
+	if len(hunks) > 1 && !v.flatMode {
 		for i, hunk := range hunks {
 			hunkLabel := hunk.Header
 			// Truncate long headers
@@ -590,7 +753,7 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged
 					text.WriteString(fmt.Sprintf("\n[%s]... +%d more lines[-]", theme.TagFgDim(), len(lines)-maxLines))
 					break
 				}
-				escaped := strings.ReplaceAll(line, "[", "[[]")
+				escaped := core.EscapeMarkup(line)
 				text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
 			}
 		}
@@ -613,7 +776,7 @@ func (v *StagingWorkflowView) renderFilePreview(entry *git.StatusEntry, isStaged
 			}
 			text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagInfo(), hunk.Header))
 			for _, line := range hunk.Lines {
-				escaped := strings.ReplaceAll(line.Content, "[", "[[]")
+				escaped := core.EscapeMarkup(line.Content)
 				switch line.Type {
 				case git.LineAdded:
 					text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
@@ -644,7 +807,7 @@ func (v *StagingWorkflowView) renderHunkPreview(entry *git.StatusEntry, hunk *gi
 	text.WriteString(fmt.Sprintf("[%s]%s[-]\n\n", theme.TagInfo(), hunk.Header))
 
 	for _, line := range hunk.Lines {
-		escaped := strings.ReplaceAll(line.Content, "[", "[[]")
+		escaped := core.EscapeMarkup(line.Content)
 		switch line.Type {
 		case git.LineAdded:
 			text.WriteString(fmt.Sprintf("[%s]+%s[-]\n", theme.TagSuccess(), escaped))
@@ -1141,6 +1304,9 @@ func (v *StagingWorkflowView) HandleKey(event *tcell.EventKey) bool {
 				return true
 			case 's', 'S':
 				v.stash()
+				return true
+			case 'v', 'V':
+				v.toggleFlatMode()
 				return true
 			case 'q':
 				v.app.Pages().Pop()

@@ -24,7 +24,11 @@ func ShowConfirmModal(app *layout.App, title, message string, onConfirm func()) 
 			})
 		}).
 		SetOnClose(func() {
-			app.Pages().Pop()
+			// Mirror the submit path: defer the pop so focus restoration doesn't
+			// race inline key handling, which otherwise leaves the app unfocused.
+			go app.QueueUpdateDraw(func() {
+				app.Pages().Pop()
+			})
 		})
 
 	app.ShowModal(modal)
@@ -32,13 +36,14 @@ func ShowConfirmModal(app *layout.App, title, message string, onConfirm func()) 
 
 // ShowErrorModal displays an error message.
 func ShowErrorModal(app *layout.App, title, message string) {
-	modal := components.NewAlertModal(title, "["+theme.TagError()+"]"+message+"[-]").
-		SetOnClose(func() {
-			app.Pages().Pop()
-		}).
-		SetOnSubmit(func() {
+	dismiss := func() {
+		go app.QueueUpdateDraw(func() {
 			app.Pages().Pop()
 		})
+	}
+	modal := components.NewAlertModal(title, "["+theme.TagError()+"]"+message+"[-]").
+		SetOnClose(dismiss).
+		SetOnSubmit(dismiss)
 
 	app.ShowModal(modal)
 }
@@ -106,14 +111,20 @@ func ShowInputModalWithDefault(app *layout.App, title, prompt, defaultValue stri
 		SetDismissOnEsc(true)
 
 	textField.SetOnSubmit(func(event *components.SubmitEvent) {
-		app.Pages().Pop()
-		if value, ok := event.Value.(string); ok {
+		// Defer the pop + callback off the input-handling goroutine, mirroring the
+		// confirm modal. Popping inline during key handling races focus restoration
+		// and leaves the underlying view unfocused.
+		value, _ := event.Value.(string)
+		go app.QueueUpdateDraw(func() {
+			app.Pages().Pop()
 			onSubmit(value)
-		}
+		})
 	})
 
 	modal.SetOnClose(func() {
-		app.Pages().Pop()
+		go app.QueueUpdateDraw(func() {
+			app.Pages().Pop()
+		})
 	})
 
 	app.ShowModal(modal)

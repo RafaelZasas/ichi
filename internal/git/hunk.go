@@ -1,12 +1,67 @@
 package git
 
 import (
-	"fmt"
-	"os"
-	"regexp"
 	"strconv"
 	"strings"
 )
+
+// parseHunkHeader parses "@@ -old[,n] +new[,n] @@"; ok=false if not a hunk
+// header. Hand-rolled (no regex) to avoid a per-call []string allocation.
+func parseHunkHeader(line string) (oldStart, oldCount, newStart, newCount int, ok bool) {
+	// "@@ -"
+	if len(line) < 4 || line[0] != '@' || line[1] != '@' || line[2] != ' ' || line[3] != '-' {
+		return 0, 0, 0, 0, false
+	}
+	i := 4
+
+	// oldStart[,oldCount]
+	oldStart, i, ok = readInt(line, i)
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	oldCount = 1
+	if i < len(line) && line[i] == ',' {
+		oldCount, i, ok = readInt(line, i+1)
+		if !ok {
+			return 0, 0, 0, 0, false
+		}
+	}
+
+	// " +"
+	if i+1 >= len(line) || line[i] != ' ' || line[i+1] != '+' {
+		return 0, 0, 0, 0, false
+	}
+	i += 2
+
+	// newStart[,newCount]
+	newStart, i, ok = readInt(line, i)
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	newCount = 1
+	if i < len(line) && line[i] == ',' {
+		newCount, i, ok = readInt(line, i+1)
+		if !ok {
+			return 0, 0, 0, 0, false
+		}
+	}
+
+	// " @@"
+	if i+2 >= len(line) || line[i] != ' ' || line[i+1] != '@' || line[i+2] != '@' {
+		return 0, 0, 0, 0, false
+	}
+	return oldStart, oldCount, newStart, newCount, true
+}
+
+// readInt reads ASCII digits from s at i, returning the value and next index; ok=false if none.
+func readInt(s string, i int) (val, next int, ok bool) {
+	start := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		val = val*10 + int(s[i]-'0')
+		i++
+	}
+	return val, i, i > start
+}
 
 // FileStatus represents the status of a file in the working tree.
 type FileStatus int
@@ -98,7 +153,15 @@ func ParseDiff(diffOutput string) ([]*FileDiff, error) {
 
 	lines := strings.Split(diffOutput, "\n")
 
-	hunkHeaderRe := regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$`)
+	// Arena: hand out *DiffLine from reusable 256-blocks (~1 alloc per 256 lines).
+	var arena []DiffLine
+	newLine := func() *DiffLine {
+		if len(arena) == cap(arena) {
+			arena = make([]DiffLine, 0, 256)
+		}
+		arena = append(arena, DiffLine{})
+		return &arena[len(arena)-1]
+	}
 
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
@@ -155,24 +218,16 @@ func ParseDiff(diffOutput string) ([]*FileDiff, error) {
 		}
 
 		// Hunk header
-		if matches := hunkHeaderRe.FindStringSubmatch(line); matches != nil {
+		if oldStart, oldCount, newStart, newCount, ok := parseHunkHeader(line); ok {
 			currentHunk = &DiffHunk{
 				Header:   line,
-				Lines:    make([]*DiffLine, 0),
+				OldStart: oldStart,
+				OldCount: oldCount,
+				NewStart: newStart,
+				NewCount: newCount,
+				// Pre-size from header counts so the append loop never regrows.
+				Lines:    make([]*DiffLine, 0, oldCount+newCount),
 				Expanded: true,
-			}
-
-			currentHunk.OldStart, _ = strconv.Atoi(matches[1])
-			if matches[2] != "" {
-				currentHunk.OldCount, _ = strconv.Atoi(matches[2])
-			} else {
-				currentHunk.OldCount = 1
-			}
-			currentHunk.NewStart, _ = strconv.Atoi(matches[3])
-			if matches[4] != "" {
-				currentHunk.NewCount, _ = strconv.Atoi(matches[4])
-			} else {
-				currentHunk.NewCount = 1
 			}
 
 			currentFile.Hunks = append(currentFile.Hunks, currentHunk)
@@ -186,9 +241,8 @@ func ParseDiff(diffOutput string) ([]*FileDiff, error) {
 
 		// Diff line content
 		if currentHunk != nil && len(line) > 0 {
-			diffLine := &DiffLine{
-				Content: line[1:], // Remove prefix character
-			}
+			diffLine := newLine()
+			diffLine.Content = line[1:] // Remove prefix character
 
 			switch line[0] {
 			case '+':
@@ -245,32 +299,46 @@ func computeLineNumbers(hunk *DiffHunk) {
 	}
 }
 
+// writeFileHeader writes the "diff --git / --- / +++" patch preamble.
+func writeFileHeader(sb *strings.Builder, file string) {
+	sb.WriteString("diff --git a/")
+	sb.WriteString(file)
+	sb.WriteString(" b/")
+	sb.WriteString(file)
+	sb.WriteString("\n--- a/")
+	sb.WriteString(file)
+	sb.WriteString("\n+++ b/")
+	sb.WriteString(file)
+	sb.WriteByte('\n')
+}
+
+// linePrefix returns the unified-diff prefix byte for a line type.
+func linePrefix(t LineType) byte {
+	switch t {
+	case LineAdded:
+		return '+'
+	case LineRemoved:
+		return '-'
+	default:
+		return ' '
+	}
+}
+
 // GenerateHunkPatch generates a patch for a single hunk.
 func GenerateHunkPatch(file string, hunk *DiffHunk) string {
 	var sb strings.Builder
 
 	// File header
-	sb.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", file, file))
-	sb.WriteString(fmt.Sprintf("--- a/%s\n", file))
-	sb.WriteString(fmt.Sprintf("+++ b/%s\n", file))
-	sb.WriteString(hunk.Header + "\n")
+	writeFileHeader(&sb, file)
+	sb.WriteString(hunk.Header)
+	sb.WriteByte('\n')
 
 	// Hunk content
 	for _, line := range hunk.Lines {
-		prefix := " "
-		switch line.Type {
-		case LineAdded:
-			prefix = "+"
-		case LineRemoved:
-			prefix = "-"
-		case LineContext:
-			prefix = " "
-		}
-		sb.WriteString(prefix + line.Content + "\n")
+		sb.WriteByte(linePrefix(line.Type))
+		sb.WriteString(line.Content)
+		sb.WriteByte('\n')
 	}
-
-	// Debug: write patch to temp file
-	_ = os.WriteFile("/tmp/ichi_debug_patch.txt", []byte(sb.String()), 0644)
 
 	return sb.String()
 }
@@ -300,38 +368,37 @@ func GenerateLinesPatch(file string, hunk *DiffHunk, selectedLines []*DiffLine) 
 	var sb strings.Builder
 
 	// File header
-	sb.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", file, file))
-	sb.WriteString(fmt.Sprintf("--- a/%s\n", file))
-	sb.WriteString(fmt.Sprintf("+++ b/%s\n", file))
+	writeFileHeader(&sb, file)
 
 	// Modified hunk header
 	newOldCount := hunk.OldCount - deletions
 	newNewCount := hunk.NewCount - additions
-	sb.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n",
-		hunk.OldStart, newOldCount, hunk.NewStart, newNewCount))
+	sb.WriteString("@@ -")
+	sb.WriteString(strconv.Itoa(hunk.OldStart))
+	sb.WriteByte(',')
+	sb.WriteString(strconv.Itoa(newOldCount))
+	sb.WriteString(" +")
+	sb.WriteString(strconv.Itoa(hunk.NewStart))
+	sb.WriteByte(',')
+	sb.WriteString(strconv.Itoa(newNewCount))
+	sb.WriteString(" @@\n")
 
 	// Output lines, converting non-selected +/- lines to context
 	for _, line := range hunk.Lines {
 		if selected[line] {
 			// Keep the line as-is
-			prefix := " "
-			switch line.Type {
-			case LineAdded:
-				prefix = "+"
-			case LineRemoved:
-				prefix = "-"
-			}
-			sb.WriteString(prefix + line.Content + "\n")
+			sb.WriteByte(linePrefix(line.Type))
+			sb.WriteString(line.Content)
+			sb.WriteByte('\n')
 		} else {
-			// Convert to context if it's a change line
+			// Convert change lines to context; skip unselected additions.
 			switch line.Type {
-			case LineContext:
-				sb.WriteString(" " + line.Content + "\n")
+			case LineContext, LineRemoved:
+				sb.WriteByte(' ')
+				sb.WriteString(line.Content)
+				sb.WriteByte('\n')
 			case LineAdded:
 				// Skip unselected additions
-			case LineRemoved:
-				// Convert unselected removals to context
-				sb.WriteString(" " + line.Content + "\n")
 			}
 		}
 	}

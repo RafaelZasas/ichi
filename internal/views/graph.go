@@ -60,6 +60,10 @@ type GraphView struct {
 	showStashes bool
 	preloaded   *PreloadedGraph
 
+	// detailCache memoizes LoadCommit by hash (immutable per hash) so scrolling
+	// doesn't re-spawn git processes. Cleared on refresh().
+	detailCache map[string]*git.CommitDetail
+
 	// Search
 	searchActive  bool
 	searchQuery   string
@@ -86,6 +90,10 @@ func (v *GraphView) setup() {
 		SetShowRefs(true).
 		SetShowHash(true).
 		SetShowAuthor(true).
+		// Debounce the detail fetch: holding j/k scrolls the cursor every step,
+		// but LoadCommit (a synchronous git call) only fires once movement
+		// settles, so rapid navigation stays fluid.
+		SetChangeDebounce(80 * time.Millisecond).
 		SetOnChange(v.updateDetail).
 		SetOnSelect(v.showCommitView)
 
@@ -202,6 +210,9 @@ func (v *GraphView) Hints() []components.KeyHint {
 // Business logic
 
 func (v *GraphView) refresh() {
+	// Drop cached details; a refresh may have moved branches/refs.
+	v.detailCache = nil
+
 	graph, err := v.repo.LoadGraph(500)
 	if err != nil {
 		v.showError(err)
@@ -285,12 +296,20 @@ func (v *GraphView) updateDetail(commit *components.GitCommit) {
 		return
 	}
 
-	// Load full commit details for enhanced preview
-	detail, err := v.repo.LoadCommit(commit.Hash)
-	if err != nil {
-		// Fallback to basic info from graph commit
-		v.updateDetailBasic(commit)
-		return
+	// Memoized by hash so scrolling back over a commit avoids re-spawning git.
+	detail, ok := v.detailCache[commit.Hash]
+	if !ok {
+		var err error
+		detail, err = v.repo.LoadCommit(commit.Hash)
+		if err != nil {
+			// Fallback to basic info from graph commit
+			v.updateDetailBasic(commit)
+			return
+		}
+		if v.detailCache == nil {
+			v.detailCache = make(map[string]*git.CommitDetail)
+		}
+		v.detailCache[commit.Hash] = detail
 	}
 
 	var text strings.Builder

@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof" // registers /debug/pprof handlers on http.DefaultServeMux
 	"os"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/atterpac/dado/theme/themes"
 
 	"github.com/atterpac/ichi/internal/app"
+	appkg "github.com/atterpac/ichi/internal/app"
 	"github.com/atterpac/ichi/internal/commands"
 	"github.com/atterpac/ichi/internal/config"
 	"github.com/atterpac/ichi/internal/git"
@@ -36,9 +39,10 @@ const ichiLogo = `
 `
 
 var (
-	repoPath = flag.String("path", ".", "Path to git repository")
-	noSplash = flag.Bool("no-splash", false, "Skip splash screen")
-	showVer  = flag.Bool("version", false, "Print version and exit")
+	repoPath  = flag.String("path", ".", "Path to git repository")
+	noSplash  = flag.Bool("no-splash", false, "Skip splash screen")
+	showVer   = flag.Bool("version", false, "Print version and exit")
+	pprofAddr = flag.String("pprof", "", "If set (e.g. localhost:6060), serve net/http/pprof for live profiling")
 )
 
 // Build info, injected via -ldflags by goreleaser.
@@ -54,6 +58,16 @@ func main() {
 	if *showVer {
 		fmt.Printf("ichi %s (commit %s, built %s)\n", version, commit, date)
 		os.Exit(0)
+	}
+
+	// Live profiling server (opt-in). Pull over HTTP, e.g.:
+	//   go tool pprof http://localhost:6060/debug/pprof/allocs
+	if *pprofAddr != "" {
+		go func() {
+			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "pprof server: %v\n", err)
+			}
+		}()
 	}
 
 	if extraArgs := flag.Args(); len(extraArgs) > 0 {
@@ -147,9 +161,29 @@ func main() {
 		OnChange: config.SetTheme,
 	})
 
-	// Initialize toast notifications
+	// Initialize toast notifications and draw them on top of every frame via the
+	// after-draw hook. Without this the toast manager exists but is never
+	// rendered.
 	app.InitToasts()
-	app.InstallToastOverlay(application)
+	if toasts := app.GetToastManager(); toasts != nil {
+		if coreApp := application.GetApp(); coreApp != nil {
+			coreApp.SetAfterDrawFunc(func(screen tcell.Screen) {
+				w, h := screen.Size()
+				toasts.Draw(screen, w, h)
+			})
+		}
+		// tcell only redraws on input events; tick while toasts are active so
+		// they animate and auto-dismiss on time.
+		go func() {
+			ticker := time.NewTicker(200 * time.Millisecond)
+			defer ticker.Stop()
+			for range ticker.C {
+				if toasts.HasActive() {
+					application.QueueUpdateDraw(func() {})
+				}
+			}
+		}()
+	}
 
 	// 6. Set up command mode callbacks
 	cmdCtx := &commands.Context{
@@ -158,15 +192,26 @@ func main() {
 		StatusBar: statusBar,
 	}
 
+	// Register user-defined context-aware commands from config.
+	for _, w := range commands.RegisterCustom(config.GetCommands()) {
+		app.ToastError("config: " + w)
+	}
+
 	statusBar.SetOnCommandSubmit(func(text string) {
 		statusBar.ExitCommandMode()
+		// Restore pre-command focus first so a modal the command opens restores to
+		// it (not the command bar) on dismiss.
+		if previousFocus != nil {
+			application.SetFocus(previousFocus)
+		}
 		depthBefore := application.Pages().StackDepth()
 		if err := commands.Execute(cmdCtx, text); err != nil {
 			app.ToastError(err.Error())
 		}
 		app.UpdateStatusBar(statusBar, repo)
-		// If a new view was pushed, focus it directly
-		// Otherwise restore previous focus and refresh the current view
+		if application.Pages().CurrentIsModal() {
+			return // modal keeps the focus set above as its restore target
+		}
 		if application.Pages().StackDepth() > depthBefore {
 			if current := application.Pages().Current(); current != nil {
 				if w, ok := current.(core.Widget); ok {
@@ -211,7 +256,7 @@ func main() {
 	statusBar.SetOnHistoryNext(commands.HistoryNext)
 
 	// 7. Set up global keys
-	application.SetInputCapture(globalInputHandler(application, repo, statusBar, &previousFocus))
+	application.SetInputCapture(globalInputHandler(application, repo, statusBar, cmdCtx, &previousFocus))
 
 	// 8. Push initial view (Graph is the home view)
 	// Wait for preloaded graph data
@@ -263,7 +308,7 @@ func showSplash(ready <-chan struct{}) error {
 	return splashApp.Run()
 }
 
-func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
+func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout.StatusBar, cmdCtx *commands.Context, previousFocus *core.Widget) func(*tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		// Don't handle keys when in command mode
 		if statusBar.IsCommandMode() {
@@ -274,6 +319,14 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 		// Exception: Escape key should still work to dismiss modals
 		if app.Pages().CurrentIsModal() && event.Key() != tcell.KeyEscape {
 			return event
+		}
+
+		// User-defined key-bound custom commands take precedence over builtins.
+		if cmd := commands.MatchKey(event); cmd != nil {
+			if err := cmd.Handler(cmdCtx, nil); err != nil {
+				appkg.ToastError(err.Error())
+			}
+			return nil
 		}
 
 		switch {
@@ -311,6 +364,11 @@ func globalInputHandler(app *layout.App, repo *git.Repository, statusBar *layout
 		// Command palette (Ctrl+P or Ctrl+K)
 		case event.Key() == tcell.KeyCtrlP || event.Key() == tcell.KeyCtrlK:
 			views.ShowFinder(app, repo, statusBar)
+			return nil
+
+		// Repo switcher (Ctrl+R)
+		case event.Key() == tcell.KeyCtrlR:
+			views.ShowRepoSwitcher(app, repo, statusBar)
 			return nil
 
 		// Git-specific global keys (only from root/graph view to avoid conflicts)

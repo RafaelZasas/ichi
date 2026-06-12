@@ -19,18 +19,18 @@ import (
 
 // CommitView displays detailed commit information.
 type CommitView struct {
-	flex         *core.Flex
-	infoPanel    *core.TextView
-	filesTable   *components.Table
-	diffPreview  *core.TextView
-	filesPanel   *components.Panel
-	diffPanel    *components.Panel
-	repo         *git.Repository
-	app          *layout.App
-	hash         string
-	commit       *git.CommitDetail
-	actions      *input.ActionRegistry
-	focusFiles   bool // true = files table focused, false = diff preview focused
+	flex        *core.Flex
+	infoPanel   *core.TextView
+	filesTable  *components.Table
+	diffPreview *core.TextView
+	filesPanel  *components.Panel
+	diffPanel   *components.Panel
+	repo        *git.Repository
+	app         *layout.App
+	hash        string
+	commit      *git.CommitDetail
+	actions     *input.ActionRegistry
+	focusFiles  bool // true = files table focused, false = diff preview focused
 }
 
 // NewCommitView creates a new commit detail view.
@@ -497,7 +497,7 @@ func (v *CommitView) formatDiffPreview(diff string) string {
 			break
 		}
 
-		escaped := strings.ReplaceAll(line, "[", "[[]")
+		escaped := core.EscapeMarkup(line)
 
 		if len(line) == 0 {
 			result.WriteString("\n")

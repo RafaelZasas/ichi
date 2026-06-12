@@ -347,7 +347,7 @@ func (v *PRDetailView) renderFileDiff(file *remote.ChangedFile) {
 				text.WriteString("\n")
 				continue
 			}
-			escaped := strings.ReplaceAll(line, "[", "[[]")
+			escaped := core.EscapeMarkup(line)
 
 			switch line[0] {
 			case '+':
@@ -382,7 +382,7 @@ func (v *PRDetailView) renderReview(review *remote.Review) {
 	text.WriteString(fmt.Sprintf("[%s]%s[-]\n\n", theme.TagFgDim(), formatTimeAgo(review.CreatedAt)))
 
 	if review.Body != "" {
-		text.WriteString(strings.ReplaceAll(review.Body, "[", "[[]"))
+		text.WriteString(core.EscapeMarkup(review.Body))
 	}
 
 	v.contentView.SetText(text.String())
@@ -406,7 +406,7 @@ func (v *PRDetailView) renderComment(comment *remote.Comment) {
 			if len(line) == 0 {
 				continue
 			}
-			escaped := strings.ReplaceAll(line, "[", "[[]")
+			escaped := core.EscapeMarkup(line)
 			switch line[0] {
 			case '+':
 				text.WriteString(fmt.Sprintf("[%s]%s[-]\n", theme.TagSuccess(), escaped))
@@ -419,7 +419,7 @@ func (v *PRDetailView) renderComment(comment *remote.Comment) {
 		text.WriteString("\n")
 	}
 
-	text.WriteString(strings.ReplaceAll(comment.Body, "[", "[[]"))
+	text.WriteString(core.EscapeMarkup(comment.Body))
 
 	v.contentView.SetText(text.String())
 	v.contentView.ScrollTo(0, 0)

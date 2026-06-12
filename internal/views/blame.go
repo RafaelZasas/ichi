@@ -211,7 +211,7 @@ func (v *BlameView) renderBlame() {
 		v.blameTable.SetCell(i, 4, sepCell)
 
 		// Content cell - escape and color based on commit
-		content := strings.ReplaceAll(line.Content, "[", "[[]")
+		content := core.EscapeMarkup(line.Content)
 		contentCell := core.NewTableCell(fmt.Sprintf("[%s]%s[-]", colorTag, content)).
 			SetExpansion(1).
 			SetAlign(core.AlignLeft)

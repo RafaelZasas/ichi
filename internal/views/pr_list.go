@@ -226,7 +226,7 @@ func (v *PRListView) renderPRDetail(pr *remote.PullRequest) {
 	var text strings.Builder
 
 	// Title
-	escaped := strings.ReplaceAll(pr.Title, "[", "[[]")
+	escaped := core.EscapeMarkup(pr.Title)
 	text.WriteString(fmt.Sprintf("[%s::b]#%d %s[-:-:-]\n\n", theme.TagAccent(), pr.Number, escaped))
 
 	// State and author
@@ -289,7 +289,7 @@ func (v *PRListView) renderPRDetail(pr *remote.PullRequest) {
 		if len(body) > 500 {
 			body = body[:500] + "..."
 		}
-		text.WriteString(strings.ReplaceAll(body, "[", "[[]"))
+		text.WriteString(core.EscapeMarkup(body))
 	}
 
 	v.detailText.SetText(text.String())
